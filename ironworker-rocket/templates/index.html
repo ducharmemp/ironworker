@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Index{% endblock %}
+
+{% block head %}
+  <style>
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h1>Index</h1>
+  <div>
+    <h3>Workers</h3>
+    {% for worker in workers %}
+    <li>{{worker}}</li>
+    {% endfor %}
+  </div>
+  <div>
+    <h3>Queues</h3>
+    {% for queue in queues %}
+    <li>{{queue}}</li>
+    {% endfor %}
+  </div>
+{% endblock %}
