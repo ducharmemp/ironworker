@@ -1,11 +1,10 @@
+mod broker;
 mod error;
 mod worker;
-mod broker;
 
+pub use broker::PostgresBroker;
 pub use error::Result;
 pub use worker::PostgresWorker;
-pub use broker::PostgresBroker;
-
 
 #[cfg(test)]
 mod tests {

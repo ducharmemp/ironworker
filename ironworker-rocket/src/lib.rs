@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use askama::Template;
 use async_trait::async_trait;
-use ironworker_core::{Broker, Worker, Message, Task, IntoTask};
+use ironworker_core::{Broker, IntoTask, Message, Task, Worker};
 use ironworker_redis::RedisBroker;
 use rocket::fairing::{Fairing, Info, Kind, Result};
 use rocket::http::{ContentType, Method, Status};
@@ -18,12 +18,10 @@ use rocket::{Build, Data, Request, Response, Rocket};
 #[template(path = "index.html")]
 struct OverviewTemplate {
     workers: Vec<String>,
-    queues: Vec<String>
+    queues: Vec<String>,
 }
 
-fn test(message: Message<u32>) {
-    
-}
+fn test(message: Message<u32>) {}
 
 #[get("/")]
 async fn index(broker: &broker::Broker<'_>) -> OverviewTemplate {

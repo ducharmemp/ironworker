@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ironworker_core::Broker;
-use ironworker_core::{Task, Message, SerializableMessage, Worker};
+use ironworker_core::{Message, SerializableMessage, Task, Worker};
 use redis::{Client, Commands, Value};
 use serde::Serialize;
-use serde_json::{to_string, from_str};
+use serde_json::{from_str, to_string};
 
 use crate::error::Result;
 use crate::worker::RedisWorker;
@@ -28,8 +28,10 @@ impl<'application> RedisBroker<'application> {
 #[async_trait]
 impl<'application> Broker for RedisBroker<'application> {
     async fn register_task<T: Task + Send>(&mut self, task: T) {
-        self.workers
-            .insert(task.name(), Arc::new(Box::new(RedisWorker::new(&self, task.name(), task).await)));
+        self.workers.insert(
+            task.name(),
+            Arc::new(Box::new(RedisWorker::new(&self, task.name(), task).await)),
+        );
     }
 
     async fn register_worker(&self, worker_name: &str) {
@@ -37,7 +39,11 @@ impl<'application> Broker for RedisBroker<'application> {
         conn.set_ex::<_, _, ()>(worker_name, 1_u32, 5 * 60).unwrap();
     }
 
-    async fn enqueue<T: Into<SerializableMessage> + Send + Serialize>(&self, queue: &str, payload: T) {
+    async fn enqueue<T: Into<SerializableMessage> + Send + Serialize>(
+        &self,
+        queue: &str,
+        payload: T,
+    ) {
         let mut conn = self.client.get_connection().unwrap();
         let message: SerializableMessage = payload.into();
         let _: () = conn
@@ -49,7 +55,9 @@ impl<'application> Broker for RedisBroker<'application> {
         let mut conn = self.client.get_connection().unwrap();
         loop {
             for (queue, worker) in &self.workers {
-                let enqueued_items = conn.lpop::<&'application str, Vec<String>>(queue, std::num::NonZeroUsize::new(1)).unwrap();
+                let enqueued_items = conn
+                    .lpop::<&'application str, Vec<String>>(queue, std::num::NonZeroUsize::new(1))
+                    .unwrap();
                 let item = enqueued_items.first().unwrap();
                 let item = from_str::<SerializableMessage>(item).unwrap();
 
@@ -70,6 +78,4 @@ impl<'application> Broker for RedisBroker<'application> {
 }
 
 #[cfg(test)]
-mod test {
-
-}
+mod test {}

@@ -59,8 +59,8 @@ pub struct FunctionMarker;
 
 impl<T, F> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
 where
-T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-F: Fn(Message<T>) -> () + Send + Sync + 'static,
+    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
+    F: Fn(Message<T>) -> () + Send + Sync + 'static,
 {
     type Task = FunctionTask<(FunctionMarker, T), F>;
     fn task(self) -> Self::Task {

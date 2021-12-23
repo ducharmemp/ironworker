@@ -1,6 +1,6 @@
-use uuid::Uuid;
 use async_trait::async_trait;
-use ironworker_core::{Worker, Task, SerializableMessage, Broker};
+use ironworker_core::{Broker, SerializableMessage, Task, Worker};
+use uuid::Uuid;
 
 use crate::{error::Result, RedisBroker};
 
@@ -8,18 +8,18 @@ use crate::{error::Result, RedisBroker};
 pub struct RedisWorker<'worker, H: Task> {
     name: String,
     queue: &'worker str,
-    task: H
+    task: H,
 }
 
 impl<'worker, H: Task> RedisWorker<'worker, H> {
-    pub async fn new(broker: &RedisBroker<'_>, queue: &'worker str, task: H) -> RedisWorker<'worker, H> {
+    pub async fn new(
+        broker: &RedisBroker<'_>,
+        queue: &'worker str,
+        task: H,
+    ) -> RedisWorker<'worker, H> {
         let name = format!("worker:{}", Uuid::new_v4());
         broker.register_worker(&name).await;
-        RedisWorker {
-            name,
-            queue,
-            task
-        }
+        RedisWorker { name, queue, task }
     }
 }
 

@@ -1,6 +1,8 @@
-
-use rocket::{request::{Request, FromRequest, Outcome}, http::Status};
-use ironworker_redis::{RedisBroker};
+use ironworker_redis::RedisBroker;
+use rocket::{
+    http::Status,
+    request::{FromRequest, Outcome, Request},
+};
 
 pub struct Broker<'a>(pub RedisBroker<'a>);
 

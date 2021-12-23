@@ -1,13 +1,12 @@
-mod worker;
-mod message;
 mod broker;
+mod message;
 mod task;
+mod worker;
 
-pub use worker::Worker;
-pub use message::{Message, SerializableMessage};
 pub use broker::Broker;
-pub use task::{Task, IntoTask};
-
+pub use message::{Message, SerializableMessage};
+pub use task::{IntoTask, Task};
+pub use worker::Worker;
 
 #[cfg(test)]
 mod tests {

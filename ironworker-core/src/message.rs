@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use serde_json::{Value, to_value};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::{to_value, Value};
 
 #[derive(Debug)]
 pub struct Message<T>(T);
@@ -20,14 +20,14 @@ impl<T> Message<T> {
 #[derive(Serialize, Deserialize)]
 pub struct SerializableMessage {
     pub payload: Value,
-    pub enqueued_at: DateTime<Utc>
+    pub enqueued_at: DateTime<Utc>,
 }
 
-impl <T: Serialize> From<Message<T>> for SerializableMessage {
+impl<T: Serialize> From<Message<T>> for SerializableMessage {
     fn from(payload: Message<T>) -> Self {
         Self {
             payload: to_value(payload.into_inner()).unwrap(),
-            enqueued_at: Utc::now()
+            enqueued_at: Utc::now(),
         }
     }
 }

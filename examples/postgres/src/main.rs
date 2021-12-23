@@ -1,7 +1,7 @@
-use ironworker_core::{Task, Broker, IntoTask, Message};
+use anyhow::Result;
+use ironworker_core::{Broker, IntoTask, Message, Task};
 use ironworker_postgres::PostgresBroker;
 use sqlx::postgres::PgPoolOptions;
-use anyhow::Result;
 
 fn my_task(message: Message<u32>) {
     dbg!("CALLED", 123);

@@ -1,10 +1,10 @@
+mod broker;
 mod error;
 mod worker;
-mod broker;
 
+pub use broker::RedisBroker;
 pub use error::Result;
 pub use worker::RedisWorker;
-pub use broker::RedisBroker;
 
 #[cfg(test)]
 mod tests {
