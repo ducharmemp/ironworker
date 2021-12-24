@@ -806,10 +806,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ironworker-httppoller"
-version = "0.1.0"
-
-[[package]]
 name = "ironworker-kafka"
 version = "0.1.0"
 
@@ -1418,6 +1414,8 @@ dependencies = [
 name = "rocket"
 version = "0.0.0"
 dependencies = [
+ "ironworker-core",
+ "ironworker-redis",
  "ironworker-rocket",
  "rocket 0.5.0-rc.1",
 ]

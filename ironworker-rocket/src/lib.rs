@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use askama::Template;
 use async_trait::async_trait;
-use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask, WorkerState};
+use ironworker_core::{IronworkerApplication, WorkerState, Broker};
 use ironworker_redis::RedisBroker;
 use rocket::fairing::{Fairing, Info, Kind, Result};
 use rocket::{tokio, State};
@@ -18,31 +18,27 @@ struct OverviewTemplate {
     queues: Vec<String>,
 }
 
-fn test(message: Message<u32>) {
-    dbg!(message);
-}
+
 
 #[get("/")]
 async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) -> OverviewTemplate {
-    for _ in 0..10 {
-        test.task().perform_later(app, 123).await;
-    }
     let workers = app.list_workers().await;
     let queues = app.list_queues().await;
 
     OverviewTemplate { workers, queues }
 }
 
-pub struct IronworkerFairing(&'static str);
 
-impl IronworkerFairing {
-    pub fn new(base: &'static str) -> Self {
-        Self(base)
+pub struct IronworkerFairing<B: Broker>(&'static str, Arc<IronworkerApplication<B>>);
+
+impl<B: Broker> IronworkerFairing<B> {
+    pub fn new(base: &'static str, app: IronworkerApplication<B>) -> IronworkerFairing<B> {
+        IronworkerFairing(base, Arc::new(app))
     }
 }
 
 #[async_trait]
-impl Fairing for IronworkerFairing {
+impl<B: Broker + Send + Sync + 'static> Fairing for IronworkerFairing<B> {
     fn info(&self) -> Info {
         Info {
             name: "Ironworker",
@@ -51,11 +47,8 @@ impl Fairing for IronworkerFairing {
     }
 
     async fn on_ignite(&self, rocket: Rocket<Build>) -> Result {
-        let mut ironworker_app =
-            IronworkerApplication::new(RedisBroker::new("redis://localhost:6379").await);
-        ironworker_app.register_task(test.task()).await;
         let rocket = rocket.mount(self.0, routes![index]);
-        let rocket = rocket.manage(Arc::new(ironworker_app));
+        let rocket = rocket.manage(self.1.clone());
         Ok(rocket)
     }
 

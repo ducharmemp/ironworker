@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
     let app = Arc::new(app);
     let app2 = app.clone();
     tokio::spawn(async move { app.run().await });
-    my_task.task().perform_later(&app2, 123).await;
+    for _ in 0..10000 {
+        my_task.task().perform_later(&app2, 123).await;
+    }
     Ok(())
 }
