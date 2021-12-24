@@ -17,16 +17,18 @@ impl<T> Message<T> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SerializableMessage {
+    pub task: String,
     pub payload: Value,
     pub enqueued_at: DateTime<Utc>,
 }
 
-impl<T: Serialize> From<Message<T>> for SerializableMessage {
-    fn from(payload: Message<T>) -> Self {
+impl SerializableMessage {
+    pub fn from_message<T: Serialize>(task: &str, message: Message<T>) -> Self {
         Self {
-            payload: to_value(payload.into_inner()).unwrap(),
+            task: task.to_string(),
+            payload: to_value(message.into_inner()).unwrap(),
             enqueued_at: Utc::now(),
         }
     }

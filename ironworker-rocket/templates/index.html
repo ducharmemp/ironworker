@@ -3,22 +3,40 @@
 {% block title %}Index{% endblock %}
 
 {% block head %}
-  <style>
-  </style>
+<style>
+</style>
 {% endblock %}
 
 {% block content %}
-  <h1>Index</h1>
-  <div>
-    <h3>Workers</h3>
-    {% for worker in workers %}
-    <li>{{worker}}</li>
-    {% endfor %}
-  </div>
-  <div>
-    <h3>Queues</h3>
-    {% for queue in queues %}
-    <li>{{queue}}</li>
-    {% endfor %}
-  </div>
+<h1>Index</h1>
+<div>
+  <h3>Workers</h3>
+  {% for worker in workers %}
+  <li>
+    <div>{{worker.name}}</div>
+    <div>
+      {% match worker.queues %}
+      {% when Some with (val) %}
+      {{val}}
+      {% when None %}
+      default
+      {%endmatch %}
+    </div>
+    <div>
+      {% match worker.last_seen_at %}
+      {% when Some with (val) %}
+      {{val}}
+      {% when None %}
+      default
+      {%endmatch %}
+    </div>
+  </li>
+  {% endfor %}
+</div>
+<div>
+  <h3>Queues</h3>
+  {% for queue in queues %}
+  <li>{{queue}}</li>
+  {% endfor %}
+</div>
 {% endblock %}

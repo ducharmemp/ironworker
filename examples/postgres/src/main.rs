@@ -1,18 +1,22 @@
 use anyhow::Result;
-use ironworker_core::{Broker, IntoTask, Message, Task};
+use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
 use ironworker_postgres::PostgresBroker;
-use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 
 fn my_task(message: Message<u32>) {
-    dbg!("CALLED", 123);
+    dbg!("CALLED", message.into_inner());
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut broker = PostgresBroker::new("postgres://test:test@localhost/test").await;
-    broker.register_task(my_task.task()).await;
-    // my_task.task().perform_now(&broker,123).await;
-    my_task.task().perform_later(&broker, 123).await;
-    broker.work().await;
+    let mut app = IronworkerApplication::new(
+        PostgresBroker::new("postgres://test:test@localhost/test").await,
+    );
+    app.register_task(my_task.task()).await;
+    my_task.task().perform_later(&app, 123).await;
+    let app = Arc::new(app);
+    let app2 = app.clone();
+    tokio::spawn(async move { app.run().await });
+    my_task.task().perform_later(&app2, 123).await;
     Ok(())
 }

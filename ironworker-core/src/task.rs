@@ -1,10 +1,10 @@
-use std::borrow::Cow;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::from_value;
 
+use crate::application::IronworkerApplication;
 use crate::broker::Broker;
 use crate::message::{Message, SerializableMessage};
 
@@ -13,20 +13,21 @@ pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
     async fn perform(&self, payload: SerializableMessage);
+}
 
-    async fn perform_now<B: Broker + Send + Sync, P: Serialize + Send + Into<Message<P>>>(
+#[async_trait]
+pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Task {
+    async fn perform_now<B: Broker + Send + Sync>(
         &self,
-        broker: &B,
-        payload: P,
+        app: &IronworkerApplication<B>,
+        payload: T,
     );
-    async fn perform_later<B: Broker + Send + Sync, P: Serialize + Send + Into<Message<P>>>(
+    async fn perform_later<B: Broker + Send + Sync>(
         &self,
-        broker: &B,
-        payload: P,
+        app: &IronworkerApplication<B>,
+        payload: T,
     ) {
-        let message: SerializableMessage = payload.into().into();
-
-        broker.enqueue(self.name(), message).await
+        app.enqueue("default", self.name(), payload).await
     }
 }
 
@@ -60,7 +61,7 @@ pub struct FunctionMarker;
 impl<T, F> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
 where
     T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> () + Send + Sync + 'static,
+    F: Fn(Message<T>) + Send + Sync + 'static,
 {
     type Task = FunctionTask<(FunctionMarker, T), F>;
     fn task(self) -> Self::Task {
@@ -75,7 +76,7 @@ where
 impl<T, F> Task for FunctionTask<(FunctionMarker, T), F>
 where
     T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> () + Send + Sync + 'static,
+    F: Fn(Message<T>) + Send + Sync + 'static,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -84,17 +85,26 @@ where
         type_name_of(&self.func)
     }
 
-    async fn perform_now<B: Broker + Send + Sync, P: Serialize + Send + Into<Message<P>>>(
-        &self,
-        broker: &B,
-        payload: P,
-    ) {
-        let payload = payload.into().into();
-        self.perform(payload).await;
-    }
-
     async fn perform(&self, payload: SerializableMessage) {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
         (self.func)(message)
+    }
+}
+
+#[async_trait]
+impl<T: Serialize + Send + Into<Message<T>>, F> PerformableTask<T>
+    for FunctionTask<(FunctionMarker, T), F>
+where
+    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
+    F: Fn(Message<T>) + Send + Sync + 'static,
+{
+    async fn perform_now<B: Broker + Send + Sync>(
+        &self,
+        _app: &IronworkerApplication<B>,
+        payload: T,
+    ) {
+        let message: Message<T> = payload.into();
+        let serializable = SerializableMessage::from_message(self.name(), message);
+        self.perform(serializable).await;
     }
 }

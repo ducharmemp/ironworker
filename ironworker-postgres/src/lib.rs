@@ -1,10 +1,8 @@
 mod broker;
 mod error;
-mod worker;
 
 pub use broker::PostgresBroker;
 pub use error::Result;
-pub use worker::PostgresWorker;
 
 #[cfg(test)]
 mod tests {
