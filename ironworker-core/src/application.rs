@@ -22,7 +22,9 @@ impl<B: Broker> IronworkerApplication<B> {
     }
 
     pub async fn register_task<T: Task + Send>(&mut self, task: T) {
-        self.tasks.entry(task.name()).or_insert_with(|| Box::new(task));
+        self.tasks
+            .entry(task.name())
+            .or_insert_with(|| Box::new(task));
     }
 
     pub async fn list_workers(&self) -> Vec<WorkerState> {

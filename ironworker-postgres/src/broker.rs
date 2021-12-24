@@ -3,8 +3,6 @@ use ironworker_core::{Broker, SerializableMessage, WorkerState};
 use serde_json::{from_str, to_string, Value};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
-
-
 pub struct PostgresBroker {
     pool: PgPool,
 }

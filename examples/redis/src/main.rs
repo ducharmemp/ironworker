@@ -13,10 +13,7 @@ struct Complex {
 
 impl Complex {
     fn new(val: String, other: i32) -> Complex {
-        Complex {
-            val,
-            other,
-        }
+        Complex { val, other }
     }
 }
 

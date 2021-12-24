@@ -7,8 +7,6 @@ use ironworker_core::{Broker, WorkerState};
 use redis::{Client, Commands};
 use serde_json::{from_str, to_string};
 
-
-
 pub struct RedisBroker {
     client: Client,
 }
