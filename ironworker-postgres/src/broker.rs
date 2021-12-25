@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ironworker_core::{Broker, SerializableMessage, WorkerState};
+use ironworker_core::{Broker, SerializableMessage, WorkerState, DeadLetterMessage};
 use serde_json::{from_str, to_string, Value};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -33,15 +33,20 @@ impl Broker for PostgresBroker {
         .unwrap();
     }
 
+    async fn deadletter(&self, message: DeadLetterMessage) {
+
+    }
+
     async fn dequeue(&self, queue: &str) -> Option<SerializableMessage> {
         self.pool.begin().await.unwrap();
         let job =
-                sqlx::query!("select task, payload, enqueued_at from jobs where queue = $1 order by enqueued_at desc for update skip locked limit 1", queue)
+                sqlx::query!("select job_id, task, payload, enqueued_at from jobs where queue = $1 order by enqueued_at desc for update skip locked limit 1", queue)
                     .fetch_optional(&self.pool)
                     .await
                     .unwrap();
         let job = job?;
         Some(SerializableMessage {
+            job_id: job.job_id.unwrap(),
             task: job.task.unwrap(),
             payload: from_str::<Value>(&job.payload.unwrap()).unwrap(),
             enqueued_at: job.enqueued_at.unwrap(),
@@ -56,5 +61,6 @@ impl Broker for PostgresBroker {
         vec![]
     }
 
-    async fn heartbeat(&self, _worker_name: &str) {}
+    async fn heartbeat(&self, application_id: &str) {}
+    async fn deregister_worker(&self, application_id: &str) {}
 }

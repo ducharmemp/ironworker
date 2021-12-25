@@ -1,42 +1,40 @@
 {% extends "base.html" %}
 
-{% block title %}Index{% endblock %}
-
-{% block head %}
-<style>
-</style>
-{% endblock %}
+{% block title %}Overview{% endblock %}
 
 {% block content %}
-<h1>Index</h1>
-<div>
-  <h3>Workers</h3>
-  {% for worker in workers %}
-  <li>
-    <div>{{worker.name}}</div>
-    <div>
-      {% match worker.queues %}
-      {% when Some with (val) %}
-      {{val}}
-      {% when None %}
-      default
-      {%endmatch %}
-    </div>
-    <div>
-      {% match worker.last_seen_at %}
-      {% when Some with (val) %}
-      {{val}}
-      {% when None %}
-      default
-      {%endmatch %}
-    </div>
-  </li>
-  {% endfor %}
-</div>
-<div>
-  <h3>Queues</h3>
-  {% for queue in queues %}
-  <li>{{queue}}</li>
-  {% endfor %}
+<h2 class="title is-2">Overview</h2>
+<div class="section">
+  <h3 class="title is-3">Workers</h3>
+  <table class="table is-striped is-bordered is-hoverable">
+    <tbody>
+      <thead>
+        <th>Id</th>
+        <th>Working On</th>
+        <th>Last Heartbeat</th>
+      </thead>
+      {% for worker in workers %}
+      <tr>
+        <td>{{worker.name}}</td>
+        <td>
+          {% match worker.queues %}
+          {% when Some with (val) %}
+          {{val}}
+          {% when None %}
+          default
+          {%endmatch %}
+        </td>
+        <td>
+          {% match worker.last_seen_at %}
+          {% when Some with (val) %}
+          {{val}}
+          {% when None %}
+          default
+          {%endmatch %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}

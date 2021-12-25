@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use ironworker_core::SerializableMessage;
+use ironworker_core::{SerializableMessage, DeadLetterMessage};
 use ironworker_core::{Broker, WorkerState};
 use redis::{Client, Commands};
 use serde_json::{from_str, to_string};
@@ -26,6 +26,16 @@ impl Broker for RedisBroker {
         let _: () = conn
             .rpush(queue, vec![to_string(&message).unwrap()])
             .unwrap();
+    }
+
+    async fn deadletter(&self, message: DeadLetterMessage) {
+        let mut conn = self.client.get_connection().unwrap();
+        let key = format!("failed:{}", message.job_id);
+        conn.hset::<_, _, _, ()>(&key, "task", message.task);
+        conn.hset::<_, _, _, ()>(&key, "enqueued_at", message.enqueued_at.to_string());
+        conn.hset::<_, _, _, ()>(&key, "payload", to_string(&message.payload).unwrap());
+        conn.hset::<_, _, _, ()>(&key, "queue", message.queue);
+        conn.hset::<_, _, _, ()>(&key, "err", message.err.to_string());
     }
 
     async fn dequeue(&self, queue: &str) -> Option<SerializableMessage> {
@@ -61,9 +71,15 @@ impl Broker for RedisBroker {
         vec![]
     }
 
-    async fn heartbeat(&self, worker_name: &str) {
+    async fn heartbeat(&self, application_id: &str) {
         let mut conn = self.client.get_connection().unwrap();
-        conn.hset::<_, _, _, ()>(worker_name, "last_seen_at", Utc::now().timestamp_millis())
+        conn.hset::<_, _, _, ()>(application_id, "last_seen_at", Utc::now().timestamp_millis())
+            .unwrap();
+    }
+
+    async fn deregister_worker(&self, application_id: &str) {
+        let mut conn = self.client.get_connection().unwrap();
+        conn.del::<_, ()>(application_id)
             .unwrap();
     }
 }
