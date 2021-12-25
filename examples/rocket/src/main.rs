@@ -1,15 +1,16 @@
 #[macro_use]
 extern crate rocket;
 
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
 use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
 use ironworker_redis::RedisBroker;
 use ironworker_rocket::IronworkerFairing;
 use rocket::State;
 
-fn test(message: Message<u32>) {
+fn test(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     dbg!(message);
+    Ok(())
 }
 
 #[get("/")]

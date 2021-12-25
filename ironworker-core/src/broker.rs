@@ -1,8 +1,9 @@
-use std::error::Error;
-
 use async_trait::async_trait;
 
-use crate::{message::{SerializableMessage, DeadLetterMessage}, WorkerState};
+use crate::{
+    message::{DeadLetterMessage, SerializableMessage},
+    WorkerState,
+};
 
 #[async_trait]
 pub trait Broker {

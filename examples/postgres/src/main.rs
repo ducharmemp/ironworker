@@ -1,10 +1,11 @@
 use anyhow::Result;
 use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
 use ironworker_postgres::PostgresBroker;
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
-fn my_task(message: Message<u32>) {
+fn my_task(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     dbg!("CALLED", message.into_inner());
+    Ok(())
 }
 
 #[tokio::main]

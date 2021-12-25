@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ironworker_core::{Broker, SerializableMessage, WorkerState, DeadLetterMessage};
+use ironworker_core::{Broker, DeadLetterMessage, SerializableMessage, WorkerState};
 use serde_json::{from_str, to_string, Value};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -33,9 +33,7 @@ impl Broker for PostgresBroker {
         .unwrap();
     }
 
-    async fn deadletter(&self, message: DeadLetterMessage) {
-
-    }
+    async fn deadletter(&self, _message: DeadLetterMessage) {}
 
     async fn dequeue(&self, queue: &str) -> Option<SerializableMessage> {
         self.pool.begin().await.unwrap();
@@ -61,6 +59,6 @@ impl Broker for PostgresBroker {
         vec![]
     }
 
-    async fn heartbeat(&self, application_id: &str) {}
-    async fn deregister_worker(&self, application_id: &str) {}
+    async fn heartbeat(&self, _application_id: &str) {}
+    async fn deregister_worker(&self, _application_id: &str) {}
 }

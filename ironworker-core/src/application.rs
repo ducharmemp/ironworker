@@ -4,7 +4,7 @@ use serde::Serialize;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
-use crate::{Broker, Message, SerializableMessage, Task, WorkerState, message::DeadLetterMessage};
+use crate::{message::DeadLetterMessage, Broker, Message, SerializableMessage, Task, WorkerState};
 
 pub struct IronworkerApplication<B: Broker> {
     id: String,
@@ -46,11 +46,14 @@ impl<B: Broker> IronworkerApplication<B> {
         self.broker.enqueue(queue, serializable).await;
     }
 
-    async fn run_task(&self, task: SerializableMessage) -> Result<(), Box<dyn std::error::Error + Send>> {
+    async fn run_task(
+        &self,
+        task: SerializableMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let task_name = task.task.clone();
         let handler = self.tasks.get(&task_name.as_str());
         if let Some(handler) = handler {
-            handler.perform(task).await;
+            handler.perform(task).await?;
         }
 
         Ok(())
@@ -63,7 +66,9 @@ impl<B: Broker> IronworkerApplication<B> {
             match task {
                 Some(task) => {
                     if let Err(e) = self.run_task(task.clone()).await {
-                        self.broker.deadletter(DeadLetterMessage::new(task, "default", e)).await;
+                        self.broker
+                            .deadletter(DeadLetterMessage::new(task, "default", e))
+                            .await;
                     }
                 }
                 None => {

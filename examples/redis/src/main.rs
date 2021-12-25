@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
 use anyhow::Result;
 use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
@@ -17,12 +17,19 @@ impl Complex {
     }
 }
 
-fn my_task(message: Message<u32>) {
-    dbg!("CALLED", message.into_inner());
+fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    // dbg!("CALLED", message.into_inner());
+    Ok(())
 }
 
-fn my_complex_task(message: Message<Complex>) {
-    dbg!("CALLED", message.into_inner());
+async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    // dbg!("async", message.into_inner());s
+    Ok(())
+}
+
+fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Send>> {
+    // dbg!("CALLED", message.into_inner());
+    Ok(())
 }
 
 #[tokio::main]
@@ -30,6 +37,8 @@ async fn main() -> Result<()> {
     let mut app = IronworkerApplication::new(RedisBroker::new("redis://localhost:6379").await);
     app.register_task(my_task.task()).await;
     app.register_task(my_complex_task.task()).await;
+    app.register_task(my_async_task.task()).await;
+
     my_task.task().perform_now(&app, 123).await;
     my_task.task().perform_later(&app, 123).await;
     my_complex_task
@@ -41,6 +50,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move { app.run().await });
     for _ in 0..10000 {
         my_task.task().perform_later(&app2, 123).await;
+        my_async_task.task().perform_later(&app2, 123).await;
     }
     Ok(())
 }

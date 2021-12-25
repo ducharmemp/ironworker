@@ -49,11 +49,7 @@ pub struct DeadLetterMessage {
 }
 
 impl DeadLetterMessage {
-    pub fn new(
-        message: SerializableMessage,
-        queue: &str,
-        err: Box<dyn Error + Send>,
-    ) -> Self {
+    pub fn new(message: SerializableMessage, queue: &str, err: Box<dyn Error + Send>) -> Self {
         Self {
             job_id: message.job_id,
             task: message.task,

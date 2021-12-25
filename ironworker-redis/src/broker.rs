@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use ironworker_core::{SerializableMessage, DeadLetterMessage};
 use ironworker_core::{Broker, WorkerState};
+use ironworker_core::{DeadLetterMessage, SerializableMessage};
 use redis::{Client, Commands};
 use serde_json::{from_str, to_string};
 
@@ -73,14 +73,17 @@ impl Broker for RedisBroker {
 
     async fn heartbeat(&self, application_id: &str) {
         let mut conn = self.client.get_connection().unwrap();
-        conn.hset::<_, _, _, ()>(application_id, "last_seen_at", Utc::now().timestamp_millis())
-            .unwrap();
+        conn.hset::<_, _, _, ()>(
+            application_id,
+            "last_seen_at",
+            Utc::now().timestamp_millis(),
+        )
+        .unwrap();
     }
 
     async fn deregister_worker(&self, application_id: &str) {
         let mut conn = self.client.get_connection().unwrap();
-        conn.del::<_, ()>(application_id)
-            .unwrap();
+        conn.del::<_, ()>(application_id).unwrap();
     }
 }
 
