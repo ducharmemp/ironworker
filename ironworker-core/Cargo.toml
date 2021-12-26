@@ -13,3 +13,4 @@ chrono = { version = "0.4", features = [ "serde" ] }
 uuid = { version = "0.8", features = ["v4"] }
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
+flume = { version = "0.10", features = ["async"] }

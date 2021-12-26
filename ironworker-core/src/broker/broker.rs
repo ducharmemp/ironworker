@@ -14,4 +14,5 @@ pub trait Broker {
     async fn list_queues(&self) -> Vec<String>;
     async fn heartbeat(&self, application_id: &str);
     async fn deregister_worker(&self, application_id: &str);
+    async fn put_back(&self, message: SerializableMessage);
 }

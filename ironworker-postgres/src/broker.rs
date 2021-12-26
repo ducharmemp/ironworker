@@ -61,4 +61,7 @@ impl Broker for PostgresBroker {
 
     async fn heartbeat(&self, _application_id: &str) {}
     async fn deregister_worker(&self, _application_id: &str) {}
+    async fn put_back(&self, _message: SerializableMessage) {
+        
+    }
 }

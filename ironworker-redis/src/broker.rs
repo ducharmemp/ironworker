@@ -31,11 +31,11 @@ impl Broker for RedisBroker {
     async fn deadletter(&self, message: DeadLetterMessage) {
         let mut conn = self.client.get_connection().unwrap();
         let key = format!("failed:{}", message.job_id);
-        conn.hset::<_, _, _, ()>(&key, "task", message.task);
-        conn.hset::<_, _, _, ()>(&key, "enqueued_at", message.enqueued_at.to_string());
-        conn.hset::<_, _, _, ()>(&key, "payload", to_string(&message.payload).unwrap());
-        conn.hset::<_, _, _, ()>(&key, "queue", message.queue);
-        conn.hset::<_, _, _, ()>(&key, "err", message.err.to_string());
+        conn.hset::<_, _, _, ()>(&key, "task", message.task).unwrap();
+        conn.hset::<_, _, _, ()>(&key, "enqueued_at", message.enqueued_at.to_string()).unwrap();
+        conn.hset::<_, _, _, ()>(&key, "payload", to_string(&message.payload).unwrap()).unwrap();
+        conn.hset::<_, _, _, ()>(&key, "queue", message.queue).unwrap();
+        conn.hset::<_, _, _, ()>(&key, "err", message.err.to_string()).unwrap();
     }
 
     async fn dequeue(&self, queue: &str) -> Option<SerializableMessage> {
@@ -84,6 +84,10 @@ impl Broker for RedisBroker {
     async fn deregister_worker(&self, application_id: &str) {
         let mut conn = self.client.get_connection().unwrap();
         conn.del::<_, ()>(application_id).unwrap();
+    }
+
+    async fn put_back(&self, _message: SerializableMessage) {
+
     }
 }
 

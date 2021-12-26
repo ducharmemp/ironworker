@@ -15,15 +15,13 @@ use rocket::{Build, Orbit, Rocket};
 #[template(path = "index.html")]
 struct OverviewTemplate {
     workers: Vec<WorkerState>,
-    queues: Vec<String>,
 }
 
 #[get("/")]
 async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) -> OverviewTemplate {
     let workers = app.list_workers().await;
-    let queues = app.list_queues().await;
 
-    OverviewTemplate { workers, queues }
+    OverviewTemplate { workers }
 }
 
 pub struct IronworkerFairing<B: Broker>(&'static str, Arc<IronworkerApplication<B>>);

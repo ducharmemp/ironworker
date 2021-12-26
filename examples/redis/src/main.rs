@@ -1,7 +1,7 @@
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 
 use anyhow::Result;
-use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
+use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask};
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 
@@ -22,8 +22,8 @@ fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 
-async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    // dbg!("async", message.into_inner());s
+async fn my_async_task(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    dbg!("async", message.into_inner());
     Ok(())
 }
 
@@ -34,23 +34,26 @@ fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Sen
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut app = IronworkerApplication::new(RedisBroker::new("redis://localhost:6379").await);
-    app.register_task(my_task.task()).await;
-    app.register_task(my_complex_task.task()).await;
-    app.register_task(my_async_task.task()).await;
+    let app = IronworkerApplicationBuilder::default()
+        .broker(RedisBroker::new("redis://localhost:6379").await)
+        .register_task(my_task.task())
+        .register_task(my_complex_task.task())
+        .register_task(my_async_task.task())
+        .build();
 
-    my_task.task().perform_now(&app, 123).await;
+    my_task.task().perform_now(&app, 123).await.unwrap();
     my_task.task().perform_later(&app, 123).await;
     my_complex_task
         .task()
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
-    let app = Arc::new(app);
-    let app2 = app.clone();
-    tokio::spawn(async move { app.run().await });
+
     for _ in 0..10000 {
-        my_task.task().perform_later(&app2, 123).await;
-        my_async_task.task().perform_later(&app2, 123).await;
+        my_task.task().perform_later(&app, 123).await;
+        my_async_task.task().perform_later(&app, 123).await;
     }
+
+    app.run().await;
+
     Ok(())
 }

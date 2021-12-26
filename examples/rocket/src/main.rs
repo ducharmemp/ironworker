@@ -3,7 +3,7 @@ extern crate rocket;
 
 use std::{error::Error, sync::Arc};
 
-use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
+use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask, IronworkerApplication};
 use ironworker_redis::RedisBroker;
 use ironworker_rocket::IronworkerFairing;
 use rocket::State;
@@ -22,9 +22,10 @@ async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) {
 
 #[rocket::launch]
 async fn rocket() -> _ {
-    let mut ironworker_app =
-        IronworkerApplication::new(RedisBroker::new("redis://localhost:6379").await);
-    ironworker_app.register_task(test.task()).await;
+    let ironworker_app = IronworkerApplicationBuilder::default()
+        .broker(RedisBroker::new("redis://localhost:6379").await)
+        .register_task(test.task())
+        .build();
     rocket::build()
         .attach(IronworkerFairing::new("/queues", ironworker_app))
         .mount("/", routes![index])

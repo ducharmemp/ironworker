@@ -19,12 +19,13 @@ pub trait Task: Send + Sync + 'static {
 
 #[async_trait]
 pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Task {
-    async fn perform_now<B: Broker + Send + Sync>(
+    async fn perform_now<B: Broker + Send + Sync + 'static>(
         &self,
         app: &IronworkerApplication<B>,
         payload: T,
-    );
-    async fn perform_later<B: Broker + Send + Sync>(
+    ) -> Result<(), Box<dyn Error + Send>>;
+
+    async fn perform_later<B: Broker + Send + Sync + 'static>(
         &self,
         app: &IronworkerApplication<B>,
         payload: T,
@@ -104,10 +105,11 @@ where
         &self,
         _app: &IronworkerApplication<B>,
         payload: T,
-    ) {
+    ) -> Result<(), Box<dyn Error + Send>> {
         let message: Message<T> = payload.into();
         let serializable = SerializableMessage::from_message(self.name(), message);
-        self.perform(serializable).await;
+        self.perform(serializable).await?;
+        Ok(())
     }
 }
 
@@ -161,9 +163,10 @@ where
         &self,
         _app: &IronworkerApplication<B>,
         payload: T,
-    ) {
+    ) -> Result<(), Box<dyn Error + Send>> {
         let message: Message<T> = payload.into();
         let serializable = SerializableMessage::from_message(self.name(), message);
-        self.perform(serializable).await;
+        self.perform(serializable).await?;
+        Ok(())
     }
 }

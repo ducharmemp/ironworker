@@ -4,7 +4,7 @@ mod message;
 mod task;
 mod worker_state;
 
-pub use application::IronworkerApplication;
+pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::Broker;
 pub use message::{DeadLetterMessage, Message, SerializableMessage};
 pub use task::{IntoTask, PerformableTask, Task};

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ironworker_core::{IntoTask, IronworkerApplication, Message, PerformableTask};
+use ironworker_core::{IntoTask, Message, PerformableTask, IronworkerApplicationBuilder};
 use ironworker_postgres::PostgresBroker;
 use std::{error::Error, sync::Arc};
 
@@ -10,10 +10,10 @@ fn my_task(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut app = IronworkerApplication::new(
-        PostgresBroker::new("postgres://test:test@localhost/test").await,
-    );
-    app.register_task(my_task.task()).await;
+    let app = IronworkerApplicationBuilder::default()
+        .broker(PostgresBroker::new("postgres://test:test@localhost/test").await)
+        .register_task(my_task.task())
+        .build();
     my_task.task().perform_later(&app, 123).await;
     let app = Arc::new(app);
     let app2 = app.clone();
