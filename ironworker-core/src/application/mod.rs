@@ -7,7 +7,8 @@ use std::sync::Arc;
 use futures::future::join_all;
 use serde::Serialize;
 
-use crate::{Broker, Message, SerializableMessage, Task, WorkerState};
+use crate::config::IronworkerConfig;
+use crate::{Broker, Message, QueueState, SerializableMessage, Task, WorkerState};
 pub use builder::IronworkerApplicationBuilder;
 use worker::IronWorker;
 
@@ -16,6 +17,7 @@ pub struct IronworkerApplication<B: Broker> {
     pub(crate) broker: Arc<B>,
     pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     pub(crate) queues: Arc<HashSet<&'static str>>,
+    pub(crate) config: IronworkerConfig,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
@@ -23,7 +25,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         self.broker.list_workers().await
     }
 
-    pub async fn list_queues(&self) -> Vec<String> {
+    pub async fn list_queues(&self) -> Vec<QueueState> {
         self.broker.list_queues().await
     }
 
@@ -41,7 +43,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         queue: &'static str,
     ) -> tokio::task::JoinHandle<()> {
         let broker = self.broker.clone();
-        let id = format!("{}-{}", self.id.clone(), index);
+        let id = format!("{}-{}-{}", self.id.clone(), queue, index);
         let tasks = self.tasks.clone();
 
         tokio::task::spawn(async move { IronWorker::new(id, broker, tasks, queue).work().await })
@@ -51,8 +53,17 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         let handles: Vec<_> = self
             .queues
             .iter()
-            .enumerate()
-            .map(|(index, queue)| self.spawn_consumer_worker(index, queue))
+            .flat_map(|queue| {
+                let default_count = self.config.concurrency;
+                let queue_count = self
+                    .config
+                    .queues
+                    .get(&queue.to_string())
+                    .map(|queue| queue.concurrency)
+                    .unwrap_or(default_count);
+
+                (0..queue_count).map(|count| self.spawn_consumer_worker(count, queue))
+            })
             .collect();
 
         join_all(handles).await;

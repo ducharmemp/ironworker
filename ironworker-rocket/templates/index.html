@@ -37,4 +37,21 @@
     </tbody>
   </table>
 </div>
+<div class="section">
+  <h3 class="title is-3">Queues</h3>
+  <table class="table is-striped is-bordered is-hoverable">
+    <tbody>
+      <thead>
+        <th>Name</th>
+        <th>Size</th>
+      </thead>
+      {% for queue in queues %}
+      <tr>
+        <td>{{queue.name}}</td>
+        <td>{{queue.size}}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

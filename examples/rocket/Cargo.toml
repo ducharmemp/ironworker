@@ -11,3 +11,5 @@ rocket = "0.5.0-rc.1"
 ironworker-core = { path = "../../ironworker-core" }
 ironworker-redis = { path = "../../ironworker-redis"}
 ironworker-rocket = { path = "../../ironworker-rocket" }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"

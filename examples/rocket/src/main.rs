@@ -12,16 +12,24 @@ use ironworker_redis::RedisBroker;
 use ironworker_rocket::IronworkerFairing;
 use rocket::State;
 
-fn test(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    dbg!(message);
+fn test(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 
 #[get("/")]
 async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) {
-    for _ in 0..10 {
-        test.task().perform_later(app, 123).await;
-    }
+    let futs: Vec<_> = (0..5)
+        .map(|_| {
+            let app = app.inner().clone();
+            tokio::task::spawn(async move {
+                for _ in 0..20000 {
+                    test.task().perform_later(&app, 123).await;
+                }
+            })
+        })
+        .collect();
+
+    futures::future::join_all(futs).await;
 }
 
 #[rocket::launch]

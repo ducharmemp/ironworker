@@ -21,3 +21,4 @@ thiserror = "1"
 tokio = { version = "1", features = ["full"] }
 flume = { version = "0.10", features = ["async"] }
 futures = "0.3"
+config = "0.11"

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use crate::config::IronworkerConfig;
 use crate::{Broker, IronworkerApplication, Task};
 
 pub struct IronworkerApplicationBuilder<B: Broker + Send + Sync + 'static> {
@@ -33,6 +34,7 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
     pub fn build(self) -> IronworkerApplication<B> {
         IronworkerApplication {
             id: self.id,
+            config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
             broker: Arc::new(self.broker.expect("Expected a broker to be registered")),
             tasks: Arc::new(self.tasks),
             queues: Arc::new(self.queues),

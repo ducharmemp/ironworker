@@ -2,15 +2,16 @@
 
 mod application;
 mod broker;
+mod config;
 mod message;
+mod state;
 mod task;
-mod worker_state;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::Broker;
 pub use message::{DeadLetterMessage, Message, SerializableMessage};
+pub use state::{QueueState, WorkerState};
 pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
-pub use worker_state::WorkerState;
 
 #[cfg(test)]
 mod tests {

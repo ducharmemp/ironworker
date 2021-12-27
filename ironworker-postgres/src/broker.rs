@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ironworker_core::{Broker, DeadLetterMessage, SerializableMessage, WorkerState};
+use ironworker_core::{Broker, DeadLetterMessage, QueueState, SerializableMessage, WorkerState};
 use serde_json::{from_str, to_string, Value};
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -57,7 +57,7 @@ impl Broker for PostgresBroker {
         vec![]
     }
 
-    async fn list_queues(&self) -> Vec<String> {
+    async fn list_queues(&self) -> Vec<QueueState> {
         vec![]
     }
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use flume::{unbounded, Receiver, Sender};
 use tokio::sync::Mutex;
 
-use crate::{Broker, DeadLetterMessage, SerializableMessage, WorkerState};
+use crate::{Broker, DeadLetterMessage, QueueState, SerializableMessage, WorkerState};
 
 type BrokerChannels = (Sender<SerializableMessage>, Receiver<SerializableMessage>);
 
@@ -43,7 +43,7 @@ impl Broker for InProcessBroker {
         vec![]
     }
 
-    async fn list_queues(&self) -> Vec<String> {
+    async fn list_queues(&self) -> Vec<QueueState> {
         vec![]
     }
 
