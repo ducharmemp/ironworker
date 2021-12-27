@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 use std::error::Error;
 
 use anyhow::Result;

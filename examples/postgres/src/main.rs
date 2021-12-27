@@ -1,3 +1,5 @@
+#![deny(clippy::all)]
+
 use anyhow::Result;
 use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask};
 use ironworker_postgres::PostgresBroker;

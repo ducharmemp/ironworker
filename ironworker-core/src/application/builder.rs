@@ -13,6 +13,7 @@ pub struct IronworkerApplicationBuilder<B: Broker + Send + Sync + 'static> {
 }
 
 impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
+    #[must_use = "An application must be built in order to use"]
     pub fn register_task<T: Task + Send>(mut self, task: T) -> IronworkerApplicationBuilder<B> {
         let task_config = task.config();
         self.queues.insert(task_config.queue);
@@ -23,6 +24,7 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
         self
     }
 
+    #[must_use = "An application must be built in order to use"]
     pub fn broker(mut self, broker: B) -> IronworkerApplicationBuilder<B> {
         self.broker = Some(broker);
         self

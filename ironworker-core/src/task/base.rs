@@ -61,8 +61,12 @@ pub struct FunctionTask<Marker, F> {
 }
 
 pub trait ConfigurableTask: Task {
+    #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
+    #[must_use]
     fn retry_on<E: Into<Box<dyn Error + Send>>>(self, err: E) -> Self;
+    #[must_use]
     fn discard_on<E: Into<Box<dyn Error + Send>>>(self, err: E) -> Self;
+    #[must_use]
     fn retries(self, count: usize) -> Self;
 }

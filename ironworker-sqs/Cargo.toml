@@ -2,6 +2,12 @@
 name = "ironworker-sqs"
 version = "0.1.0"
 edition = "2021"
+description = "An SQS broker for Ironworker applications"
+repository = "https://github.com/ducharmemp/ironworker"
+readme = "../README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["jobs", "queues", "web"]
+categories = ["web-programming:async-job", "web-programming:job-queue"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

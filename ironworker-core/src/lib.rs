@@ -1,3 +1,5 @@
+#![deny(clippy::all, clippy::cargo)]
+
 mod application;
 mod broker;
 mod message;
