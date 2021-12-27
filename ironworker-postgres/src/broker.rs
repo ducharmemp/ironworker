@@ -22,12 +22,13 @@ impl PostgresBroker {
 #[async_trait]
 impl Broker for PostgresBroker {
     async fn enqueue(&self, queue: &str, message: SerializableMessage) {
+        let serialized_message = to_string(&message.payload).unwrap();
         sqlx::query!(
             "insert into ironworker_jobs (id, task, queue, payload, enqueued_at) values ($1, $2, $3, $4, $5)",
             message.job_id,
             message.task,
             queue,
-            to_string(&message.payload).unwrap(),
+            serialized_message,
             message.enqueued_at
         )
         .execute(&self.pool)
