@@ -5,19 +5,30 @@ on:
      - main
 jobs:
   ci:
-    name: Rust project
+    name: "Test ${{ matrix.rust }}"
     runs-on: ubuntu-latest
+     strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
+        name: "Install ${{matrix.rust}}"
         with:
-            toolchain: stable
-            components: clippy
+            toolchain: ${{matrix.rust}}
+            override: true
+            components: clippy, rustfmt
       - uses: actions-rs/clippy-check@v1
+        if: ${{matrix.rust == 'stable'}}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
       - uses: actions-rs/cargo@v1
+        if: ${{matrix.rust == 'stable'}}
         with:
           command: fmt
           args: -- --check
