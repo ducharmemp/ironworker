@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sqlx = { version = "0.5", features = [ "runtime-tokio-native-tls", "postgres", "time", "chrono" ] }
+sqlx = { version = "0.5", features = [ "runtime-tokio-native-tls", "postgres", "time", "chrono", "offline" ] }
 tokio = { version = "1", features = ["full"] }
 thiserror = "1"
 ironworker-core = { path = "../ironworker-core" }

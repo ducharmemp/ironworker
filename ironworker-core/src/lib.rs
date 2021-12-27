@@ -7,7 +7,7 @@ mod worker_state;
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::Broker;
 pub use message::{DeadLetterMessage, Message, SerializableMessage};
-pub use task::{IntoTask, PerformableTask, Task};
+pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
 pub use worker_state::WorkerState;
 
 #[cfg(test)]

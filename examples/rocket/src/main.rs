@@ -3,7 +3,9 @@ extern crate rocket;
 
 use std::{error::Error, sync::Arc};
 
-use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask, IronworkerApplication};
+use ironworker_core::{
+    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, PerformableTask,
+};
 use ironworker_redis::RedisBroker;
 use ironworker_rocket::IronworkerFairing;
 use rocket::State;

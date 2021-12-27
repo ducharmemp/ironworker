@@ -23,7 +23,9 @@ impl PostgresBroker {
 impl Broker for PostgresBroker {
     async fn enqueue(&self, queue: &str, message: SerializableMessage) {
         sqlx::query!(
-            "insert into jobs (queue, payload, enqueued_at) values ($1, $2, $3)",
+            "insert into ironworker_jobs (id, task, queue, payload, enqueued_at) values ($1, $2, $3, $4, $5)",
+            message.job_id,
+            message.task,
             queue,
             to_string(&message.payload).unwrap(),
             message.enqueued_at
@@ -35,18 +37,18 @@ impl Broker for PostgresBroker {
 
     async fn deadletter(&self, _message: DeadLetterMessage) {}
 
-    async fn dequeue(&self, queue: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, _application_id: &str, queue: &str) -> Option<SerializableMessage> {
         self.pool.begin().await.unwrap();
         let job =
-                sqlx::query!("select job_id, task, payload, enqueued_at from jobs where queue = $1 order by enqueued_at desc for update skip locked limit 1", queue)
+                sqlx::query!("select id, task, payload, enqueued_at from ironworker_jobs where queue = $1 order by enqueued_at desc for update skip locked limit 1", queue)
                     .fetch_optional(&self.pool)
                     .await
                     .unwrap();
         let job = job?;
         Some(SerializableMessage {
-            job_id: job.job_id.unwrap(),
-            task: job.task.unwrap(),
-            payload: from_str::<Value>(&job.payload.unwrap()).unwrap(),
+            job_id: job.id,
+            task: job.task,
+            payload: from_str::<Value>(&job.payload).unwrap(),
             enqueued_at: job.enqueued_at.unwrap(),
         })
     }
@@ -61,7 +63,6 @@ impl Broker for PostgresBroker {
 
     async fn heartbeat(&self, _application_id: &str) {}
     async fn deregister_worker(&self, _application_id: &str) {}
-    async fn put_back(&self, _message: SerializableMessage) {
-        
-    }
+    async fn put_back(&self, _message: SerializableMessage) {}
+    async fn mark_done(&self, _application_id: &str) {}
 }

@@ -1,7 +1,9 @@
 use std::error::Error;
 
 use anyhow::Result;
-use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask};
+use ironworker_core::{
+    ConfigurableTask, IntoTask, IronworkerApplicationBuilder, Message, PerformableTask,
+};
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 
@@ -22,8 +24,8 @@ fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 
-async fn my_async_task(message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    dbg!("async", message.into_inner());
+async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    // dbg!("async", message.into_inner());
     Ok(())
 }
 
@@ -36,9 +38,9 @@ fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Sen
 async fn main() -> Result<()> {
     let app = IronworkerApplicationBuilder::default()
         .broker(RedisBroker::new("redis://localhost:6379").await)
-        .register_task(my_task.task())
-        .register_task(my_complex_task.task())
-        .register_task(my_async_task.task())
+        .register_task(my_task.task().queue_as("fake").retries(2))
+        .register_task(my_complex_task.task().queue_as("complex"))
+        .register_task(my_async_task.task().queue_as("async"))
         .build();
 
     my_task.task().perform_now(&app, 123).await.unwrap();

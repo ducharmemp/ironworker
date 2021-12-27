@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ironworker_core::{IntoTask, Message, PerformableTask, IronworkerApplicationBuilder};
+use ironworker_core::{IntoTask, IronworkerApplicationBuilder, Message, PerformableTask};
 use ironworker_postgres::PostgresBroker;
 use std::{error::Error, sync::Arc};
 
