@@ -1,7 +1,6 @@
 use ironworker_core::SerializableMessage;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RedisMessage(SerializableMessage);
@@ -12,9 +11,9 @@ impl From<SerializableMessage> for RedisMessage {
     }
 }
 
-impl Into<SerializableMessage> for RedisMessage {
-    fn into(self) -> SerializableMessage {
-        self.0
+impl From<RedisMessage> for SerializableMessage {
+    fn from(message: RedisMessage) -> SerializableMessage {
+        message.0
     }
 }
 
