@@ -7,7 +7,8 @@ use futures::future;
 use ironworker_core::SerializableMessage;
 use ironworker_core::{Broker, QueueState, WorkerState};
 use redis::{pipe, AsyncCommands, Client};
-use serde_json::{from_str, to_string};
+
+use crate::message::RedisMessage;
 
 pub struct RedisBroker {
     client: Client,
@@ -44,7 +45,9 @@ impl Broker for RedisBroker {
     async fn enqueue(&self, queue: &str, message: SerializableMessage) {
         let mut conn = self.client.get_async_connection().await.unwrap();
         let queue_key = Self::format_queue_key(queue);
-        conn.lpush::<_, _, ()>(&queue_key, vec![to_string(&message).unwrap()])
+        let message = RedisMessage::from(message);
+
+        conn.lpush::<_, _, ()>(&queue_key, vec![message])
             .await
             .unwrap();
     }
@@ -52,7 +55,9 @@ impl Broker for RedisBroker {
     async fn deadletter(&self, queue: &str, message: SerializableMessage) {
         let mut conn = self.client.get_async_connection().await.unwrap();
         let deadletter_key = Self::format_deadletter_key(queue);
-        conn.lpush::<_, _, ()>(&deadletter_key, vec![to_string(&message).unwrap()])
+        let message = RedisMessage::from(message);
+
+        conn.lpush::<_, _, ()>(&deadletter_key, vec![message])
             .await
             .unwrap();
     }
@@ -63,11 +68,10 @@ impl Broker for RedisBroker {
         let queue_key = Self::format_queue_key(queue);
 
         let item = conn
-            .brpoplpush::<_, String>(&queue_key, &reserved_key, 5)
+            .brpoplpush::<_, RedisMessage>(&queue_key, &reserved_key, 5)
             .await;
         let item = item.ok()?;
-        let item = from_str::<SerializableMessage>(&item).unwrap();
-        Some(item)
+        Some(item.into())
     }
 
     async fn list_workers(&self) -> Vec<WorkerState> {
