@@ -6,6 +6,9 @@ use std::sync::Arc;
 
 use futures::future::join_all;
 use serde::Serialize;
+use tokio::select;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast::{channel, Receiver};
 
 use crate::config::IronworkerConfig;
 use crate::{Broker, Message, QueueState, SerializableMessage, Task, WorkerState};
@@ -41,16 +44,20 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         &self,
         index: usize,
         queue: &'static str,
+        rx: Receiver<()>,
     ) -> tokio::task::JoinHandle<()> {
         let broker = self.broker.clone();
         let id = format!("{}-{}-{}", self.id.clone(), queue, index);
         let tasks = self.tasks.clone();
 
-        tokio::task::spawn(async move { IronWorker::new(id, broker, tasks, queue).work().await })
+        tokio::task::spawn(async move { IronWorker::new(id, broker, tasks, queue).work(rx).await })
     }
 
     pub async fn run(&self) {
-        let handles: Vec<_> = self
+        let (shutdown_tx, _) = channel(1);
+        let mut ctrl_c_signal = signal(SignalKind::interrupt()).unwrap();
+
+        let mut handles: Vec<_> = self
             .queues
             .iter()
             .flat_map(|queue| {
@@ -62,11 +69,18 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
                     .map(|queue| queue.concurrency)
                     .unwrap_or(default_count);
 
-                (0..queue_count).map(|count| self.spawn_consumer_worker(count, queue))
+                (0..queue_count)
+                    .map(|count| self.spawn_consumer_worker(count, queue, shutdown_tx.subscribe()))
             })
             .collect();
 
-        join_all(handles).await;
+        select!(
+            _ = join_all(&mut handles) => {},
+            _ = ctrl_c_signal.recv() => {
+                shutdown_tx.send(()).expect("All workers have already been dropped");
+                join_all(&mut handles).await;
+            }
+        );
     }
 }
 

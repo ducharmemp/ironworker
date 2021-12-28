@@ -16,8 +16,14 @@ fn test(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 
+async fn sleepy(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    tokio::time::sleep(std::time::Duration::from_secs(35)).await;
+    Ok(())
+}
+
 #[get("/")]
 async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) {
+    sleepy.task().perform_later(app, 123).await;
     let futs: Vec<_> = (0..5)
         .map(|_| {
             let app = app.inner().clone();
@@ -37,6 +43,7 @@ async fn rocket() -> _ {
     let ironworker_app = IronworkerApplicationBuilder::default()
         .broker(RedisBroker::new("redis://localhost:6379").await)
         .register_task(test.task())
+        .register_task(sleepy.task())
         .build();
     rocket::build()
         .attach(IronworkerFairing::new("/queues", ironworker_app))

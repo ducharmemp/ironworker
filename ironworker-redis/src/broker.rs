@@ -4,9 +4,9 @@ use std::num::NonZeroUsize;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use futures::future;
+use ironworker_core::SerializableMessage;
 use ironworker_core::{Broker, QueueState, WorkerState};
-use ironworker_core::{DeadLetterMessage, SerializableMessage};
-use redis::{AsyncCommands, Client};
+use redis::{pipe, AsyncCommands, Client};
 use serde_json::{from_str, to_string};
 
 pub struct RedisBroker {
@@ -22,8 +22,8 @@ impl RedisBroker {
 }
 
 impl RedisBroker {
-    pub fn format_deadletter_key(job_id: &str) -> String {
-        format!("failed:{}", job_id)
+    pub fn format_deadletter_key(queue_name: &str) -> String {
+        format!("failed:{}", queue_name)
     }
 
     pub fn format_worker_info_key(worker_id: &str) -> String {
@@ -44,30 +44,17 @@ impl Broker for RedisBroker {
     async fn enqueue(&self, queue: &str, message: SerializableMessage) {
         let mut conn = self.client.get_async_connection().await.unwrap();
         let queue_key = Self::format_queue_key(queue);
-        let _: () = conn
-            .lpush(&queue_key, vec![to_string(&message).unwrap()])
+        conn.lpush::<_, _, ()>(&queue_key, vec![to_string(&message).unwrap()])
             .await
             .unwrap();
     }
 
-    async fn deadletter(&self, message: DeadLetterMessage) {
-        let err = message.err.to_string();
+    async fn deadletter(&self, queue: &str, message: SerializableMessage) {
         let mut conn = self.client.get_async_connection().await.unwrap();
-        let key = Self::format_deadletter_key(&message.job_id);
-
-        conn.hset::<_, _, _, ()>(&key, "task", message.task)
+        let deadletter_key = Self::format_deadletter_key(queue);
+        conn.lpush::<_, _, ()>(&deadletter_key, vec![to_string(&message).unwrap()])
             .await
             .unwrap();
-        conn.hset::<_, _, _, ()>(&key, "enqueued_at", message.enqueued_at.to_string())
-            .await
-            .unwrap();
-        conn.hset::<_, _, _, ()>(&key, "payload", to_string(&message.payload).unwrap())
-            .await
-            .unwrap();
-        conn.hset::<_, _, _, ()>(&key, "queue", message.queue)
-            .await
-            .unwrap();
-        conn.hset::<_, _, _, ()>(&key, "err", err).await.unwrap();
     }
 
     async fn dequeue(&self, application_id: &str, queue: &str) -> Option<SerializableMessage> {
@@ -134,7 +121,11 @@ impl Broker for RedisBroker {
         let mut conn = self.client.get_async_connection().await.unwrap();
         let worker_key = Self::format_worker_info_key(application_id);
 
-        conn.hset::<_, _, _, ()>(worker_key, "last_seen_at", Utc::now().timestamp_millis())
+        pipe()
+            .atomic()
+            .hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis())
+            .expire(&worker_key, 60)
+            .query_async::<_, ()>(&mut conn)
             .await
             .unwrap();
     }
@@ -157,4 +148,7 @@ impl Broker for RedisBroker {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    #[tokio::test]
+    async fn enqueue_pushed_to_a_list() {}
+}

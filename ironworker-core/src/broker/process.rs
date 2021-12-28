@@ -1,42 +1,35 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use async_trait::async_trait;
-use flume::{unbounded, Receiver, Sender};
 use tokio::sync::Mutex;
 
-use crate::{Broker, DeadLetterMessage, QueueState, SerializableMessage, WorkerState};
-
-type BrokerChannels = (Sender<SerializableMessage>, Receiver<SerializableMessage>);
+use crate::{Broker, QueueState, SerializableMessage, WorkerState};
 
 #[derive(Default)]
 pub struct InProcessBroker {
-    queues: Mutex<HashMap<String, BrokerChannels>>,
+    pub queues: Mutex<HashMap<String, VecDeque<SerializableMessage>>>,
+    pub deadletter: Mutex<HashMap<String, SerializableMessage>>,
 }
 
 #[async_trait]
 impl Broker for InProcessBroker {
     async fn enqueue(&self, queue: &str, message: SerializableMessage) {
-        let tx = {
-            let mut write_guard = self.queues.lock().await;
-            let (tx, _) = write_guard
-                .entry(queue.to_string())
-                .or_insert_with(unbounded);
-            tx.clone()
-        };
-        tx.send_async(message);
+        let mut write_guard = self.queues.lock().await;
+        let queue = write_guard.entry(queue.to_string()).or_default();
+        queue.push_back(message);
     }
 
-    async fn deadletter(&self, _message: DeadLetterMessage) {}
+    async fn deadletter(&self, queue: &str, message: SerializableMessage) {
+        let mut write_guard = self.deadletter.lock().await;
+        write_guard
+            .entry(queue.to_string())
+            .or_insert_with(|| message);
+    }
 
     async fn dequeue(&self, _application_id: &str, queue: &str) -> Option<SerializableMessage> {
-        let rx = {
-            let mut write_guard = self.queues.lock().await;
-            let (_, rx) = write_guard
-                .entry(queue.to_string())
-                .or_insert_with(unbounded);
-            rx.clone()
-        };
-        rx.recv_async().await.ok()
+        let mut write_guard = self.queues.lock().await;
+        let queue = write_guard.entry(queue.to_string()).or_default();
+        queue.pop_front()
     }
 
     async fn list_workers(&self) -> Vec<WorkerState> {
