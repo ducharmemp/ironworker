@@ -1,9 +1,9 @@
 concurrency: 10
 
 queues:
-  - default:
-      concurrency: 25
-  - critical:
-      concurrency: 50
-  - low:
-      concurrency: 5
+  default:
+    concurrency: 25
+  critical:
+    concurrency: 50
+  low:
+    concurrency: 5

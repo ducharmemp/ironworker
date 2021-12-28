@@ -6,12 +6,14 @@ mod config;
 mod message;
 mod state;
 mod task;
+mod error;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::Broker;
 pub use message::{Message, SerializableMessage};
 pub use state::{QueueState, WorkerState};
 pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
+pub use error::{IronworkerError, IronworkerResult};
 
 #[cfg(test)]
 mod tests {

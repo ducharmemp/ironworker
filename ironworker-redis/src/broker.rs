@@ -47,7 +47,7 @@ impl Broker for RedisBroker {
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&queue_key, vec![message])
+        conn.lpush::<_, _, ()>(&queue_key, message)
             .await
             .unwrap();
     }
@@ -57,7 +57,7 @@ impl Broker for RedisBroker {
         let deadletter_key = Self::format_deadletter_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&deadletter_key, vec![message])
+        conn.lpush::<_, _, ()>(&deadletter_key, message)
             .await
             .unwrap();
     }
