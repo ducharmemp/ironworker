@@ -1,8 +1,5 @@
 name: Ironworker CI
-on:
-  push:
-    branches:
-     - main
+on: [push, pull_request]
 jobs:
   ci:
     name: "Test ${{ matrix.rust }}"

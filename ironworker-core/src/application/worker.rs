@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use state::Container;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::interval;
@@ -14,6 +15,7 @@ pub struct IronWorker<B: Broker> {
     pub(crate) broker: Arc<B>,
     pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     pub(crate) queue: &'static str,
+    pub(crate) state: Arc<Container![Send + Sync]>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
@@ -22,12 +24,14 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         broker: Arc<B>,
         tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
         queue: &'static str,
+        state: Arc<Container![Send + Sync]>,
     ) -> Self {
         Self {
             id,
             broker,
             tasks,
             queue,
+            state,
         }
     }
 
@@ -39,7 +43,12 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             let handler_config = handler.config();
             let max_retries = handler_config.retries;
 
-            match timeout(Duration::from_secs(30), handler.perform(message.clone())).await {
+            match timeout(
+                Duration::from_secs(30),
+                handler.perform(message.clone(), &self.state),
+            )
+            .await
+            {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
                         message.err = Some(e.into());
@@ -132,6 +141,7 @@ mod test {
                 boxed_task(long_running.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         time::advance(Duration::from_secs(45)).await;
@@ -170,6 +180,7 @@ mod test {
                 boxed_task(erroring.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
@@ -200,6 +211,7 @@ mod test {
                 boxed_task(successful.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
     }
@@ -235,6 +247,7 @@ mod test {
                 boxed_task(erroring.task().retries(1)),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         assert_eq!(broker.queues.lock().await["default"].len(), 1);
@@ -271,6 +284,7 @@ mod test {
                 boxed_task(erroring.task().retries(1)),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         worker

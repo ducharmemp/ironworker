@@ -565,6 +565,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "impl-trait-for-tuples"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5dacb10c5b3bb92d46ba347505a9041e676bb20ad220101326bffb0c93031ee"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -606,8 +617,10 @@ dependencies = [
  "chrono",
  "config",
  "futures",
+ "impl-trait-for-tuples",
  "serde 1.0.132",
  "serde_json",
+ "state",
  "thiserror",
  "tokio",
  "uuid",
