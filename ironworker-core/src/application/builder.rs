@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::config::IronworkerConfig;
 use crate::{Broker, IronworkerApplication, Task};
 
-pub struct IronworkerApplicationBuilder<B: Broker + Send + Sync + 'static> {
+pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
     tasks: HashMap<&'static str, Box<dyn Task>>,
@@ -15,7 +15,7 @@ pub struct IronworkerApplicationBuilder<B: Broker + Send + Sync + 'static> {
     state: Container![Send + Sync],
 }
 
-impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
+impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
     #[must_use = "An application must be built in order to use"]
     pub fn register_task<T: Task + Send>(mut self, task: T) -> IronworkerApplicationBuilder<B> {
         let task_config = task.config();
@@ -46,8 +46,7 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
         self
     }
 
-    pub fn build(mut self) -> IronworkerApplication<B> {
-        self.state.freeze();
+    pub fn build(self) -> IronworkerApplication<B> {
         IronworkerApplication {
             id: self.id,
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
@@ -59,7 +58,7 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
     }
 }
 
-impl<B: Broker + Send + Sync + 'static> Default for IronworkerApplicationBuilder<B> {
+impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4().to_string(),

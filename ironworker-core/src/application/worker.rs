@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -35,7 +36,22 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         }
     }
 
-    async fn work_task(&self, mut message: SerializableMessage) {
+    async fn reenquee_or_deadletter(
+        &self,
+        mut message: SerializableMessage,
+        max_retries: usize,
+        err: Box<dyn Error + Send>,
+    ) {
+        message.err = Some(err.into());
+        if message.retries < max_retries {
+            message.retries += 1;
+            self.broker.enqueue(self.queue, message).await;
+        } else {
+            self.broker.deadletter(self.queue, message).await;
+        }
+    }
+
+    async fn work_task(&self, message: SerializableMessage) {
         let task_name = message.task.clone();
 
         let handler = self.tasks.get(&task_name.as_str());
@@ -51,23 +67,12 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
-                        message.err = Some(e.into());
-                        if message.retries < max_retries {
-                            message.retries += 1;
-                            self.broker.enqueue(self.queue, message).await;
-                        } else {
-                            self.broker.deadletter(self.queue, message).await;
-                        }
+                        self.reenquee_or_deadletter(message, max_retries, e).await;
                     }
                 }
                 Err(e) => {
-                    message.err = Some(e.into());
-                    if message.retries < max_retries {
-                        message.retries += 1;
-                        self.broker.enqueue(self.queue, message).await;
-                    } else {
-                        self.broker.deadletter(self.queue, message).await;
-                    }
+                    self.reenquee_or_deadletter(message, max_retries, Box::new(e))
+                        .await;
                 }
             }
             self.broker.mark_done(&self.id).await;

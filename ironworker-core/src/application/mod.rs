@@ -26,6 +26,17 @@ pub struct IronworkerApplication<B: Broker> {
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
+    pub fn manage<T>(&self, state: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        // let type_name = std::any::type_name::<T>();
+        if !self.state.set(state) {
+            // error!("state for type '{}' is already being managed", type_name);
+            panic!("aborting due to duplicately managed state");
+        }
+    }
+
     pub async fn list_workers(&self) -> Vec<WorkerState> {
         self.broker.list_workers().await
     }

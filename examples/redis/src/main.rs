@@ -33,7 +33,7 @@ fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Sen
     Ok(())
 }
 
-fn test_multiple(message: Message<Complex>, test: &u32) -> Result<(), Box<dyn Error + Send>> {
+fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 

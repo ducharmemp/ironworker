@@ -1,5 +1,5 @@
-mod queue;
-mod worker;
+mod queue_state;
+mod worker_state;
 
-pub use queue::QueueState;
-pub use worker::WorkerState;
+pub use queue_state::QueueState;
+pub use worker_state::WorkerState;

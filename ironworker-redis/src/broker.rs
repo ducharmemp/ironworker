@@ -137,8 +137,6 @@ impl Broker for RedisBroker {
         conn.del::<_, ()>(application_id).await.unwrap();
     }
 
-    async fn put_back(&self, _message: SerializableMessage) {}
-
     async fn mark_done(&self, application_id: &str) {
         let mut conn = self.client.get_async_connection().await.unwrap();
         let reserved_key = Self::format_reserved_key(application_id);
