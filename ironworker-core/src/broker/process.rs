@@ -42,6 +42,5 @@ impl Broker for InProcessBroker {
 
     async fn heartbeat(&self, _application_id: &str) {}
     async fn deregister_worker(&self, _application_id: &str) {}
-    async fn put_back(&self, _message: SerializableMessage) {}
     async fn mark_done(&self, _application_id: &str) {}
 }

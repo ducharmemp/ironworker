@@ -22,17 +22,18 @@ impl Complex {
 }
 
 fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    // dbg!("CALLED", message.into_inner());
     Ok(())
 }
 
 async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    // dbg!("async", message.into_inner());
     Ok(())
 }
 
 fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Send>> {
-    // dbg!("CALLED", message.into_inner());
+    Ok(())
+}
+
+fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn Error + Send>> {
     Ok(())
 }
 
@@ -43,15 +44,20 @@ async fn main() -> Result<()> {
         .register_task(my_task.task().queue_as("fake").retries(2))
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))
+        .register_task(test_multiple.task())
         .build();
 
-    my_task.task().perform_now(&app, 123).await.unwrap();
+    // my_task.task().perform_now(&app, 123).await.unwrap();
     my_task.task().perform_later(&app, 123).await;
     my_complex_task
         .task()
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
 
+    my_complex_task
+        .task()
+        .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
+        .await;
     for _ in 0..10000 {
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;

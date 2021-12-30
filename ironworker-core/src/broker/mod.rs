@@ -6,7 +6,7 @@ use crate::{message::SerializableMessage, QueueState, WorkerState};
 pub use process::InProcessBroker;
 
 #[async_trait]
-pub trait Broker {
+pub trait Broker: Send + Sync {
     async fn enqueue(&self, queue: &str, message: SerializableMessage);
     async fn deadletter(&self, queue: &str, message: SerializableMessage);
     async fn dequeue(&self, application_id: &str, queue: &str) -> Option<SerializableMessage>;
@@ -14,6 +14,5 @@ pub trait Broker {
     async fn list_queues(&self) -> Vec<QueueState>;
     async fn heartbeat(&self, application_id: &str);
     async fn deregister_worker(&self, application_id: &str);
-    async fn put_back(&self, message: SerializableMessage);
     async fn mark_done(&self, application_id: &str);
 }

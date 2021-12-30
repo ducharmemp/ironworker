@@ -35,7 +35,7 @@ impl<B: Broker> IronworkerFairing<B> {
 }
 
 #[async_trait]
-impl<B: Broker + Send + Sync + 'static> Fairing for IronworkerFairing<B> {
+impl<B: Broker + 'static> Fairing for IronworkerFairing<B> {
     fn info(&self) -> Info {
         Info {
             name: "Ironworker",

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
+use state::Container;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::interval;
@@ -14,6 +16,7 @@ pub struct IronWorker<B: Broker> {
     pub(crate) broker: Arc<B>,
     pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     pub(crate) queue: &'static str,
+    pub(crate) state: Arc<Container![Send + Sync]>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
@@ -22,16 +25,33 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         broker: Arc<B>,
         tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
         queue: &'static str,
+        state: Arc<Container![Send + Sync]>,
     ) -> Self {
         Self {
             id,
             broker,
             tasks,
             queue,
+            state,
         }
     }
 
-    async fn work_task(&self, mut message: SerializableMessage) {
+    async fn reenquee_or_deadletter(
+        &self,
+        mut message: SerializableMessage,
+        max_retries: usize,
+        err: Box<dyn Error + Send>,
+    ) {
+        message.err = Some(err.into());
+        if message.retries < max_retries {
+            message.retries += 1;
+            self.broker.enqueue(self.queue, message).await;
+        } else {
+            self.broker.deadletter(self.queue, message).await;
+        }
+    }
+
+    async fn work_task(&self, message: SerializableMessage) {
         let task_name = message.task.clone();
 
         let handler = self.tasks.get(&task_name.as_str());
@@ -39,26 +59,20 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             let handler_config = handler.config();
             let max_retries = handler_config.retries;
 
-            match timeout(Duration::from_secs(30), handler.perform(message.clone())).await {
+            match timeout(
+                Duration::from_secs(30),
+                handler.perform(message.clone(), &self.state),
+            )
+            .await
+            {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
-                        message.err = Some(e.into());
-                        if message.retries < max_retries {
-                            message.retries += 1;
-                            self.broker.enqueue(self.queue, message).await;
-                        } else {
-                            self.broker.deadletter(self.queue, message).await;
-                        }
+                        self.reenquee_or_deadletter(message, max_retries, e).await;
                     }
                 }
                 Err(e) => {
-                    message.err = Some(e.into());
-                    if message.retries < max_retries {
-                        message.retries += 1;
-                        self.broker.enqueue(self.queue, message).await;
-                    } else {
-                        self.broker.deadletter(self.queue, message).await;
-                    }
+                    self.reenquee_or_deadletter(message, max_retries, Box::new(e))
+                        .await;
                 }
             }
             self.broker.mark_done(&self.id).await;
@@ -132,6 +146,7 @@ mod test {
                 boxed_task(long_running.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         time::advance(Duration::from_secs(45)).await;
@@ -170,6 +185,7 @@ mod test {
                 boxed_task(erroring.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
@@ -200,6 +216,7 @@ mod test {
                 boxed_task(successful.task()),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
     }
@@ -235,6 +252,7 @@ mod test {
                 boxed_task(erroring.task().retries(1)),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         assert_eq!(broker.queues.lock().await["default"].len(), 1);
@@ -271,6 +289,7 @@ mod test {
                 boxed_task(erroring.task().retries(1)),
             )])),
             "default",
+            Default::default(),
         );
         worker.work_task(message).await;
         worker

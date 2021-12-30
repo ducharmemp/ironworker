@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use serde::Serialize;
+use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
@@ -15,22 +16,22 @@ pub trait Task: Send + Sync + 'static {
     fn name(&self) -> &'static str;
     fn config(&'_ self) -> &'_ Config;
 
-    async fn perform(&self, payload: SerializableMessage) -> Result<(), Box<dyn Error + Send>>;
+    async fn perform(
+        &self,
+        payload: SerializableMessage,
+        state: &Container![Send + Sync],
+    ) -> Result<(), Box<dyn Error + Send>>;
 }
 
 #[async_trait]
 pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Task {
-    async fn perform_now<B: Broker + Send + Sync + 'static>(
+    async fn perform_now<B: Broker + 'static>(
         &self,
         app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    async fn perform_later<B: Broker + Send + Sync + 'static>(
-        &self,
-        app: &IronworkerApplication<B>,
-        payload: T,
-    ) {
+    async fn perform_later<B: Broker + 'static>(&self, app: &IronworkerApplication<B>, payload: T) {
         app.enqueue(self.name(), payload).await
     }
 }

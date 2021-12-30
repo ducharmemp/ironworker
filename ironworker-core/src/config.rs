@@ -8,7 +8,6 @@ pub(crate) struct QueueConfig {
 }
 
 #[derive(Deserialize)]
-#[serde(bound(deserialize = "'de: 'static"))]
 pub(crate) struct IronworkerConfig {
     pub concurrency: usize,
     pub queues: HashMap<String, QueueConfig>,

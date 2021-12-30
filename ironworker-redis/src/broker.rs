@@ -47,9 +47,7 @@ impl Broker for RedisBroker {
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&queue_key, vec![message])
-            .await
-            .unwrap();
+        conn.lpush::<_, _, ()>(&queue_key, message).await.unwrap();
     }
 
     async fn deadletter(&self, queue: &str, message: SerializableMessage) {
@@ -57,7 +55,7 @@ impl Broker for RedisBroker {
         let deadletter_key = Self::format_deadletter_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&deadletter_key, vec![message])
+        conn.lpush::<_, _, ()>(&deadletter_key, message)
             .await
             .unwrap();
     }
@@ -138,8 +136,6 @@ impl Broker for RedisBroker {
         let mut conn = self.client.get_async_connection().await.unwrap();
         conn.del::<_, ()>(application_id).await.unwrap();
     }
-
-    async fn put_back(&self, _message: SerializableMessage) {}
 
     async fn mark_done(&self, application_id: &str) {
         let mut conn = self.client.get_async_connection().await.unwrap();

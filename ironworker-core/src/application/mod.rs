@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use futures::future::join_all;
 use serde::Serialize;
+use state::Container;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast::{channel, Receiver};
@@ -21,9 +22,21 @@ pub struct IronworkerApplication<B: Broker> {
     pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     pub(crate) queues: Arc<HashSet<&'static str>>,
     pub(crate) config: IronworkerConfig,
+    pub(crate) state: Arc<Container![Send + Sync]>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
+    pub fn manage<T>(&self, state: T)
+    where
+        T: Send + Sync + 'static,
+    {
+        // let type_name = std::any::type_name::<T>();
+        if !self.state.set(state) {
+            // error!("state for type '{}' is already being managed", type_name);
+            panic!("aborting due to duplicately managed state");
+        }
+    }
+
     pub async fn list_workers(&self) -> Vec<WorkerState> {
         self.broker.list_workers().await
     }
@@ -49,8 +62,13 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         let broker = self.broker.clone();
         let id = format!("{}-{}-{}", self.id.clone(), queue, index);
         let tasks = self.tasks.clone();
+        let state = self.state.clone();
 
-        tokio::task::spawn(async move { IronWorker::new(id, broker, tasks, queue).work(rx).await })
+        tokio::task::spawn(async move {
+            IronWorker::new(id, broker, tasks, queue, state)
+                .work(rx)
+                .await
+        })
     }
 
     pub async fn run(&self) {

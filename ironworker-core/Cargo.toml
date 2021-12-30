@@ -21,3 +21,5 @@ thiserror = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
 futures = "0.3"
 config = "0.11"
+state = "0.5"
+impl-trait-for-tuples = "0.2"

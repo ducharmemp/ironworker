@@ -1,19 +1,21 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use state::Container;
 use uuid::Uuid;
 
 use crate::config::IronworkerConfig;
 use crate::{Broker, IronworkerApplication, Task};
 
-pub struct IronworkerApplicationBuilder<B: Broker + Send + Sync + 'static> {
+pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
     tasks: HashMap<&'static str, Box<dyn Task>>,
     queues: HashSet<&'static str>,
+    state: Container![Send + Sync],
 }
 
-impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
+impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
     #[must_use = "An application must be built in order to use"]
     pub fn register_task<T: Task + Send>(mut self, task: T) -> IronworkerApplicationBuilder<B> {
         let task_config = task.config();
@@ -31,6 +33,19 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
         self
     }
 
+    pub fn manage<T>(self, state: T) -> Self
+    where
+        T: Send + Sync + 'static,
+    {
+        // let type_name = std::any::type_name::<T>();
+        if !self.state.set(state) {
+            // error!("state for type '{}' is already being managed", type_name);
+            panic!("aborting due to duplicately managed state");
+        }
+
+        self
+    }
+
     pub fn build(self) -> IronworkerApplication<B> {
         IronworkerApplication {
             id: self.id,
@@ -38,17 +53,19 @@ impl<B: Broker + Send + Sync + 'static> IronworkerApplicationBuilder<B> {
             broker: Arc::new(self.broker.expect("Expected a broker to be registered")),
             tasks: Arc::new(self.tasks),
             queues: Arc::new(self.queues),
+            state: Arc::new(self.state),
         }
     }
 }
 
-impl<B: Broker + Send + Sync + 'static> Default for IronworkerApplicationBuilder<B> {
+impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             broker: None,
             tasks: HashMap::new(),
             queues: HashSet::new(),
+            state: Default::default(),
         }
     }
 }
