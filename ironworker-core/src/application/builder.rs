@@ -101,4 +101,12 @@ mod test {
             .register_task(test_task.task());
         assert_eq!(builder.tasks.values().len(), 1);
     }
+
+    #[tokio::test]
+    async fn manage_registers_state() {
+        let builder = IronworkerApplicationBuilder::default()
+            .broker(InProcessBroker::default())
+            .manage(1_u32);
+        assert_eq!(builder.state.try_get::<u32>().unwrap(), &1);
+    }
 }

@@ -6,8 +6,7 @@ use std::time::Duration;
 use state::Container;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
-use tokio::time::interval;
-use tokio::time::timeout;
+use tokio::time::{interval, timeout};
 
 use crate::{Broker, SerializableMessage, Task};
 
