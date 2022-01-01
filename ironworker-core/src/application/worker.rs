@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,6 +7,7 @@ use tokio::select;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::{interval, timeout};
 
+use crate::task::TaggedError;
 use crate::{Broker, SerializableMessage, Task};
 
 pub struct IronWorker<B: Broker> {
@@ -35,43 +35,44 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         }
     }
 
-    async fn reenquee_or_deadletter(
-        &self,
-        mut message: SerializableMessage,
-        max_retries: usize,
-        err: Box<dyn Error + Send>,
-    ) {
-        message.err = Some(err.into());
-        if message.retries < max_retries {
-            message.retries += 1;
-            self.broker.enqueue(self.queue, message).await;
-        } else {
-            self.broker.deadletter(self.queue, message).await;
-        }
-    }
-
     async fn work_task(&self, message: SerializableMessage) {
         let task_name = message.task.clone();
 
         let handler = self.tasks.get(&task_name.as_str());
         if let Some(handler) = handler {
             let handler_config = handler.config();
-            let max_retries = handler_config.retries;
-
-            match timeout(
+            let task_future = timeout(
                 Duration::from_secs(30),
                 handler.perform(message.clone(), &self.state),
-            )
-            .await
-            {
+            );
+
+            let processs_failed = |mut message: SerializableMessage, err: TaggedError| async move {
+                let retry_on_config = handler_config
+                    .retry_on
+                    .get(&err.type_id)
+                    .cloned()
+                    .unwrap_or_default();
+                let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
+                let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
+                let should_discard = handler_config.discard_on.contains(&err.type_id);
+
+                message.err = Some(err.wrapped.into());
+                if message.retries < retries && !should_discard {
+                    message.retries += 1;
+                    self.broker.enqueue(queue, message).await;
+                } else {
+                    self.broker.deadletter(queue, message).await;
+                }
+            };
+
+            match task_future.await {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
-                        self.reenquee_or_deadletter(message, max_retries, e).await;
+                        processs_failed(message, e).await;
                     }
                 }
                 Err(e) => {
-                    self.reenquee_or_deadletter(message, max_retries, Box::new(e))
-                        .await;
+                    processs_failed(message, e.into()).await;
                 }
             }
             self.broker.mark_done(&self.id).await;
