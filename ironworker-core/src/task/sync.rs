@@ -12,17 +12,19 @@ use crate::message::{Message, SerializableMessage};
 use crate::{IntoTask, PerformableTask, Task};
 
 use super::config::Config;
+use super::error::{ErrorRetryConfiguration, TaggedError};
 use super::{ConfigurableTask, FunctionTask};
 
 pub struct IsFunctionSystem;
 pub struct FunctionMarker;
 
-impl<T, F> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
+impl<T, F, Err> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
 where
+    Err: Into<TaggedError> + 'static,
     T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
 {
-    type Task = FunctionTask<(FunctionMarker, T), F>;
+    type Task = FunctionTask<(FunctionMarker, T, Err), F>;
     fn task(self) -> Self::Task {
         FunctionTask {
             func: self,
@@ -33,10 +35,11 @@ where
 }
 
 #[async_trait]
-impl<T, F> Task for FunctionTask<(FunctionMarker, T), F>
+impl<T, F, Err> Task for FunctionTask<(FunctionMarker, T, Err), F>
 where
+    Err: Into<TaggedError> + 'static,
     T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -53,18 +56,18 @@ where
         &self,
         payload: SerializableMessage,
         _state: &Container![Send + Sync],
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) -> Result<(), TaggedError> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message)
+        (self.func)(message).map_err(|e| e.into())
     }
 }
 
 #[async_trait]
-impl<T: Serialize + Send + Into<Message<T>>, F> PerformableTask<T>
-    for FunctionTask<(FunctionMarker, T), F>
+impl<T, F, Err> PerformableTask<T> for FunctionTask<(FunctionMarker, T, Err), F>
 where
-    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+    Err: Into<TaggedError> + 'static,
+    T: for<'de> Deserialize<'de> + Serialize + 'static + Send + Into<Message<T>>,
+    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
 {
     async fn perform_now<B: Broker + Send + Sync>(
         &self,
@@ -75,21 +78,22 @@ where
     }
 }
 
-impl<T, F> ConfigurableTask for FunctionTask<(FunctionMarker, T), F>
+impl<T, F, Err> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err), F>
 where
+    Err: Into<TaggedError> + 'static,
     T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
 {
     fn queue_as(mut self, queue_name: &'static str) -> Self {
         self.config.queue = queue_name;
         self
     }
 
-    fn retry_on<E: Into<Box<dyn Error + Send>>>(self, _err: E) -> Self {
+    fn retry_on<E: Into<TaggedError>>(self, _err: E) -> Self {
         todo!()
     }
 
-    fn discard_on<E: Into<Box<dyn Error + Send>>>(self, _err: E) -> Self {
+    fn discard_on<E: Into<TaggedError>>(self, _err: E) -> Self {
         todo!()
     }
 
@@ -101,13 +105,14 @@ where
 
 macro_rules! impl_task_function {
     ($($param: ident),*) => {
-        impl<T, F, $($param),*> IntoTask<(IsFunctionSystem, FunctionMarker, T, $($param),*)> for F
+        impl<T, F, Err, $($param),*> IntoTask<(IsFunctionSystem, FunctionMarker, T, Err, $($param),*)> for F
         where
+            Err: Into<TaggedError> + 'static,
             T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
             $($param: Send + Sync + 'static),*
         {
-            type Task = FunctionTask<(FunctionMarker, T, $($param),*), F>;
+            type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
                 FunctionTask {
                     func: self,
@@ -118,10 +123,11 @@ macro_rules! impl_task_function {
         }
 
         #[async_trait]
-        impl<T, F, $($param),*> Task for FunctionTask<(FunctionMarker, T, $($param),*), F>
+        impl<T, F, Err, $($param),*> Task for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
+            Err: Into<TaggedError> + 'static,
             T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
             $($param: Send + Sync + 'static),*
         {
             fn name(&self) -> &'static str {
@@ -135,18 +141,19 @@ macro_rules! impl_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), Box<dyn Error + Send>> {
+            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), TaggedError> {
                 let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*)
+                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).map_err(|e| e.into())
             }
         }
 
         #[async_trait]
-        impl<T: Serialize + Send + Into<Message<T>>, F, $($param),*> PerformableTask<T>
-            for FunctionTask<(FunctionMarker, T, $($param),*), F>
+        impl<T, F, Err, $($param),*> PerformableTask<T>
+            for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
-            T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+            Err: Into<TaggedError> + 'static,
+            T: for<'de> Deserialize<'de> + Serialize + 'static + Send + Into<Message<T>>,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
             $($param: Send + Sync + 'static),*
         {
             async fn perform_now<B: Broker + Send + Sync>(
@@ -158,10 +165,11 @@ macro_rules! impl_task_function {
             }
         }
 
-        impl<T, F, $($param),*> ConfigurableTask for FunctionTask<(FunctionMarker, T, $($param),*), F>
+        impl<T, F, Err, $($param),*> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
+            Err: Into<TaggedError> + 'static,
             T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
             $($param: Send + Sync + 'static),*
         {
             fn queue_as(mut self, queue_name: &'static str) -> Self {
@@ -169,12 +177,16 @@ macro_rules! impl_task_function {
                 self
             }
 
-            fn retry_on<E: Into<Box<dyn Error + Send>>>(self, _err: E) -> Self {
-                todo!()
+            fn retry_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
+                let tagged = err.into();
+                self.config.retry_on.entry(tagged.type_id).or_insert_with(|| ErrorRetryConfiguration::default());
+                self
             }
 
-            fn discard_on<E: Into<Box<dyn Error + Send>>>(self, _err: E) -> Self {
-                todo!()
+            fn discard_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
+                let tagged = err.into();
+                self.config.discard_on.insert(tagged.type_id);
+                self
             }
 
             fn retries(mut self, count: usize) -> Self {
@@ -204,7 +216,8 @@ impl_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14,
 
 #[cfg(test)]
 mod test {
-    use std::sync::{Arc, Mutex};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
 
     use crate::{broker::InProcessBroker, IronworkerApplicationBuilder};
 
@@ -212,27 +225,25 @@ mod test {
 
     #[tokio::test]
     async fn perform_runs_the_task() {
-        let status_mock_called = Arc::new(Mutex::new(false));
+        let status_mock_called = Arc::new(AtomicBool::new(false));
         let inner = status_mock_called.clone();
 
         let status_mock = Box::new(
             move |_state: Message<u32>| -> Result<(), Box<dyn Error + Send>> {
-                let mut write_guard = inner.lock().unwrap();
-                *write_guard = true;
+                inner.store(true, std::sync::atomic::Ordering::Relaxed);
                 Ok(())
             },
         );
 
         let payload: Message<u32> = 123.into();
-        let res = status_mock
+        let _res = status_mock
             .task()
             .perform(
                 SerializableMessage::from_message("status_mock", payload),
                 &Default::default(),
             )
             .await;
-        assert_eq!(res.unwrap(), ());
-        assert_eq!(*status_mock_called.lock().unwrap(), true);
+        assert!(status_mock_called.load(std::sync::atomic::Ordering::Relaxed))
     }
 
     #[tokio::test]
