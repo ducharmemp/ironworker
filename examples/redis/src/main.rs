@@ -39,6 +39,7 @@ fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn 
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
     let app = IronworkerApplicationBuilder::default()
         .broker(RedisBroker::new("redis://localhost:6379").await)
         .register_task(my_task.task().queue_as("fake").retries(2))

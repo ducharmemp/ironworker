@@ -12,3 +12,5 @@ ironworker-redis = { path = "../../ironworker-redis" }
 ironworker-core = { path = "../../ironworker-core" }
 anyhow = "1"
 serde = "1"
+tracing-subscriber = "0.3"
+tracing = "0.1"

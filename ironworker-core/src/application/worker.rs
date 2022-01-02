@@ -6,6 +6,7 @@ use state::Container;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::{interval, timeout};
+use tracing::{debug, info};
 
 use crate::task::TaggedError;
 use crate::{Broker, SerializableMessage, Task};
@@ -91,10 +92,12 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 },
                 message = self.broker.dequeue(&self.id, self.queue) => {
                     if let Some(message) = message {
+                        info!(id=?self.id, "Working on job {}", message.job_id);
                         self.work_task(message).await;
                     }
                 }
                 _ = interval.tick() => {
+                    debug!(id=?self.id, "Emitting heartbeat");
                     self.broker.heartbeat(&self.id).await;
                 },
             );
