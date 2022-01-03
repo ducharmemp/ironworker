@@ -150,6 +150,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4521f3e3d031370679b3b140beb36dfe4801b09ac77e30c61941f97df3ef28b"
 
 [[package]]
+name = "bb8"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e9f4fa9768efd269499d8fba693260cfc670891cf6de3adc935588447a77cc8"
+dependencies = [
+ "async-trait",
+ "futures-channel",
+ "futures-util",
+ "parking_lot",
+ "tokio",
+]
+
+[[package]]
+name = "bb8-redis"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c440295545cb69b3cec992ae8844fbb1de1c84f2f90248438af287e14bb09bde"
+dependencies = [
+ "async-trait",
+ "bb8",
+ "redis 0.21.4",
+]
+
+[[package]]
 name = "binascii"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -650,6 +674,7 @@ dependencies = [
  "state",
  "thiserror",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -658,6 +683,7 @@ name = "ironworker-redis"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bb8-redis",
  "chrono",
  "futures",
  "ironworker-core",
@@ -1127,6 +1153,8 @@ dependencies = [
  "ironworker-redis",
  "serde 1.0.132",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

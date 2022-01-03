@@ -10,6 +10,7 @@ use state::Container;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast::{channel, Receiver};
+use tracing::debug;
 
 use crate::config::IronworkerConfig;
 use crate::{Broker, Message, QueueState, SerializableMessage, Task, WorkerState};
@@ -48,6 +49,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
     pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(&self, task: &str, payload: P) {
         let message: Message<P> = payload.into();
         let serializable = SerializableMessage::from_message(task, message);
+        debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
         let task = self.tasks.get(task).unwrap();
         let task_config = task.config();
         self.broker.enqueue(task_config.queue, serializable).await;
