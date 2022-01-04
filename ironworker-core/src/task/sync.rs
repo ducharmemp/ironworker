@@ -15,7 +15,9 @@ use super::config::Config;
 use super::error::{ErrorRetryConfiguration, TaggedError};
 use super::{ConfigurableTask, FunctionTask};
 
+#[derive(Clone, Copy)]
 pub struct IsFunctionSystem;
+#[derive(Clone, Copy)]
 pub struct FunctionMarker;
 
 impl<T, F, Err> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F

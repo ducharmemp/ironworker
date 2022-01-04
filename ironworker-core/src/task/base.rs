@@ -46,6 +46,7 @@ pub trait IntoTask<Params> {
     fn task(self) -> Self::Task;
 }
 
+#[derive(Clone, Copy)]
 pub struct AlreadyWasTask;
 
 // Tasks implicitly implement IntoTask

@@ -16,7 +16,9 @@ use super::config::Config;
 use super::error::TaggedError;
 use super::FunctionTask;
 
+#[derive(Clone, Copy)]
 pub struct IsAsyncFunctionSystem;
+#[derive(Clone, Copy)]
 pub struct AsyncFunctionMarker;
 
 impl<T, F, Err, Fut> IntoTask<(IsAsyncFunctionSystem, AsyncFunctionMarker, T)> for F

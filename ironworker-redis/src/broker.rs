@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use async_trait::async_trait;
-use bb8_redis::{bb8::Pool, RedisConnectionManager};
+use deadpool_redis::{Config, Runtime, Pool};
 use chrono::{TimeZone, Utc};
 use futures::future;
 use ironworker_core::SerializableMessage;
@@ -12,14 +12,13 @@ use redis::{pipe, AsyncCommands};
 use crate::message::RedisMessage;
 
 pub struct RedisBroker {
-    pool: Pool<RedisConnectionManager>,
+    pool: Pool,
 }
 
 impl RedisBroker {
     pub async fn new(uri: &str) -> RedisBroker {
-        let manager = RedisConnectionManager::new(uri).unwrap();
         Self {
-            pool: Pool::builder().max_size(50).build(manager).await.unwrap(),
+            pool: Config::from_url(uri).create_pool(Some(Runtime::Tokio1)).unwrap(),
         }
     }
 }

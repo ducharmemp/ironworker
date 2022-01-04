@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 
+#[derive(Debug)]
 pub struct WorkerState {
     pub name: String,
     pub queues: Option<String>,

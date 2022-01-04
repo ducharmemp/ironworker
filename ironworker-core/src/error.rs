@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Copy, Clone)]
 pub enum IronworkerError {
     #[error("Could not enqueue a task")]
     CouldNotEnqueue,
