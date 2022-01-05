@@ -37,6 +37,11 @@ fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn 
     Ok(())
 }
 
+fn my_panicking_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+    panic!("Panic!");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -46,6 +51,7 @@ async fn main() -> Result<()> {
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))
         .register_task(test_multiple.task())
+        .register_task(my_panicking_task.task())
         .build();
 
     // my_task.task().perform_now(&app, 123).await.unwrap();
@@ -59,7 +65,9 @@ async fn main() -> Result<()> {
         .task()
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
-    for _ in 0..10000 {
+
+    for _ in 0..100 {
+        my_panicking_task.task().perform_later(&app, 123).await;
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;
     }

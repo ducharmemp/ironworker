@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
 use async_trait::async_trait;
-use deadpool_redis::{Config, Runtime, Pool};
 use chrono::{TimeZone, Utc};
+use deadpool_redis::{Config, Pool, Runtime};
 use futures::future;
 use ironworker_core::SerializableMessage;
 use ironworker_core::{Broker, QueueState, WorkerState};
@@ -18,7 +18,13 @@ pub struct RedisBroker {
 impl RedisBroker {
     pub async fn new(uri: &str) -> RedisBroker {
         Self {
-            pool: Config::from_url(uri).create_pool(Some(Runtime::Tokio1)).unwrap(),
+            pool: Config::from_url(uri)
+                .builder()
+                .unwrap()
+                .max_size(50)
+                .runtime(Runtime::Tokio1)
+                .build()
+                .unwrap(),
         }
     }
 }

@@ -1,10 +1,5 @@
 #![forbid(unsafe_code)]
-#![deny(
-    clippy::all,
-    clippy::cargo,
-    nonstandard_style,
-    rust_2018_idioms,
-)]
+#![deny(clippy::all, clippy::cargo, nonstandard_style, rust_2018_idioms)]
 #![forbid(non_ascii_idents, unsafe_code)]
 #![warn(
     deprecated_in_future,

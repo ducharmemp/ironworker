@@ -1,22 +1,97 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::{atomic::AtomicUsize, Arc};
 use std::time::Duration;
 
+use futures::future::select_all;
 use state::Container;
 use tokio::select;
-use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
 use tracing::{debug, info};
 
 use crate::task::TaggedError;
 use crate::{Broker, SerializableMessage, Task};
 
+pub struct IronWorkerPool<B: Broker> {
+    id: String,
+    broker: Arc<B>,
+    tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
+    queue: &'static str,
+    state: Arc<Container![Send + Sync]>,
+    worker_count: usize,
+    shutdown_channel: Receiver<()>,
+    current_worker_index: AtomicUsize,
+    worker_shutdown_channel: Sender<()>,
+}
+
+impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
+    pub fn new(
+        id: String,
+        broker: Arc<B>,
+        tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
+        queue: &'static str,
+        state: Arc<Container![Send + Sync]>,
+        worker_count: usize,
+        shutdown_channel: Receiver<()>,
+    ) -> Self {
+        Self {
+            id,
+            broker,
+            tasks,
+            queue,
+            state,
+            worker_count,
+            shutdown_channel,
+            current_worker_index: AtomicUsize::new(0),
+            worker_shutdown_channel: channel(1).0,
+        }
+    }
+
+    fn spawn_worker(&self) -> JoinHandle<()> {
+        let broker = self.broker.clone();
+        let index = self.current_worker_index.fetch_add(1, Ordering::SeqCst);
+        let id = format!("{}-{}-{}", self.id.clone(), self.queue, index);
+        let tasks = self.tasks.clone();
+        let state = self.state.clone();
+        let queue = self.queue;
+        let rx = self.worker_shutdown_channel.subscribe();
+        tokio::task::spawn(async move {
+            info!(id=?id, "Booting worker {}", id);
+            IronWorker::new(id, broker, tasks, queue, state)
+                .work(rx)
+                .await
+        })
+    }
+
+    pub async fn work(mut self) {
+        info!(id=?self.id, queue=?self.queue, "Booting worker pool with {} workers", self.worker_count);
+        let mut worker_handles: Vec<_> = (0..self.worker_count)
+            .map(|_| self.spawn_worker())
+            .collect();
+
+        loop {
+            select!(
+                _ = self.shutdown_channel.recv() => {
+                    self.worker_shutdown_channel.send(()).expect("All workers were dropped");
+                    return;
+                },
+                (_res, _, rest) = select_all(worker_handles) => {
+                    worker_handles = rest;
+                    worker_handles.push(self.spawn_worker());
+                }
+            );
+        }
+    }
+}
+
 pub struct IronWorker<B: Broker> {
     id: String,
-    pub(crate) broker: Arc<B>,
-    pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
-    pub(crate) queue: &'static str,
-    pub(crate) state: Arc<Container![Send + Sync]>,
+    broker: Arc<B>,
+    tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
+    queue: &'static str,
+    state: Arc<Container![Send + Sync]>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorker<B> {

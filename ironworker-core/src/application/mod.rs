@@ -9,13 +9,13 @@ use serde::Serialize;
 use state::Container;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::broadcast::{channel, Receiver};
+use tokio::sync::broadcast::channel;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
 use crate::{Broker, Message, QueueState, SerializableMessage, Task, WorkerState};
 pub use builder::IronworkerApplicationBuilder;
-use worker::IronWorker;
+use worker::IronWorkerPool;
 
 pub struct IronworkerApplication<B: Broker> {
     pub(crate) id: String,
@@ -55,24 +55,6 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         self.broker.enqueue(task_config.queue, serializable).await;
     }
 
-    fn spawn_consumer_worker(
-        &self,
-        index: usize,
-        queue: &'static str,
-        rx: Receiver<()>,
-    ) -> tokio::task::JoinHandle<()> {
-        let broker = self.broker.clone();
-        let id = format!("{}-{}-{}", self.id.clone(), queue, index);
-        let tasks = self.tasks.clone();
-        let state = self.state.clone();
-
-        tokio::task::spawn(async move {
-            IronWorker::new(id, broker, tasks, queue, state)
-                .work(rx)
-                .await
-        })
-    }
-
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
         let mut ctrl_c_signal = signal(SignalKind::interrupt()).unwrap();
@@ -80,17 +62,27 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         let mut handles: Vec<_> = self
             .queues
             .iter()
-            .flat_map(|queue| {
+            .map(|queue| {
                 let default_count = self.config.concurrency;
-                let queue_count = self
+                let worker_count = self
                     .config
                     .queues
                     .get(&queue.to_string())
                     .map(|queue| queue.concurrency)
                     .unwrap_or(default_count);
 
-                (0..queue_count)
-                    .map(|count| self.spawn_consumer_worker(count, queue, shutdown_tx.subscribe()))
+                let broker = self.broker.clone();
+                let tasks = self.tasks.clone();
+                let state = self.state.clone();
+                let id = self.id.clone();
+                let rx = shutdown_tx.subscribe();
+                let queue = <&str>::clone(queue);
+
+                tokio::task::spawn(async move {
+                    IronWorkerPool::new(id, broker, tasks, queue, state, worker_count, rx)
+                        .work()
+                        .await
+                })
             })
             .collect();
 
