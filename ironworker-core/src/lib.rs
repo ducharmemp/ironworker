@@ -27,4 +27,4 @@ pub use broker::Broker;
 pub use error::{IronworkerError, IronworkerResult};
 pub use message::{Message, SerializableMessage};
 pub use meta::{QueueState, WorkerState};
-pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
+pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableTask, Task};

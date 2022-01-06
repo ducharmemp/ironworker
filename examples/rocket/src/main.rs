@@ -62,14 +62,15 @@ async fn create(db: Db, post: Json<Post>) -> Result<Created<Json<Post>>> {
     Ok(Created::new("/").body(post))
 }
 
-fn create_posts(_payload: Message<Post>, _pool: &SqlitePool) -> Result<(), Box<dyn Error + Send>> {
+fn create_posts(_payload: Message<Post>) -> Result<(), Box<dyn Error + Send>> {
     // futures::executor::block_on(async {
     //     pool.run(|conn| async move {
     //         diesel::insert_into(posts::table)
-    //         .values(&payload.into_inner())
-    //         .execute(&conn)
-    //         .unwrap();
-    //     }).await
+    //             .values(&payload.into_inner())
+    //             .execute(&conn)
+    //             .unwrap();
+    //     })
+    //     .await
     // });
     Ok(())
 }
