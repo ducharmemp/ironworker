@@ -13,14 +13,17 @@ use tokio::sync::broadcast::channel;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
-use crate::{Broker, Message, QueueState, SerializableMessage, Task, WorkerState};
+use crate::{
+    Broker, IronworkerMiddleware, Message, QueueState, SerializableMessage, Task, WorkerState,
+};
 pub use builder::IronworkerApplicationBuilder;
-use worker::IronWorkerPool;
+use worker::IronWorkerPoolBuilder;
 
 pub struct IronworkerApplication<B: Broker> {
     pub(crate) id: String,
     pub(crate) broker: Arc<B>,
     pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
+    pub(crate) middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
     pub(crate) queues: Arc<HashSet<&'static str>>,
     pub(crate) config: IronworkerConfig,
     pub(crate) state: Arc<Container![Send + Sync]>,
@@ -48,11 +51,15 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
 
     pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(&self, task: &str, payload: P) {
         let message: Message<P> = payload.into();
-        let serializable = SerializableMessage::from_message(task, message);
+        let handler = self.tasks.get(task).unwrap();
+        let handler_config = handler.config();
+
+        let serializable = SerializableMessage::from_message(task, handler_config.queue, message);
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
-        let task = self.tasks.get(task).unwrap();
-        let task_config = task.config();
-        self.broker.enqueue(task_config.queue, serializable).await;
+
+        self.broker
+            .enqueue(handler_config.queue, serializable)
+            .await;
     }
 
     pub async fn run(&self) {
@@ -71,18 +78,18 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
                     .map(|queue| queue.concurrency)
                     .unwrap_or(default_count);
 
-                let broker = self.broker.clone();
-                let tasks = self.tasks.clone();
-                let state = self.state.clone();
-                let id = self.id.clone();
-                let rx = shutdown_tx.subscribe();
-                let queue = <&str>::clone(queue);
+                let pool = IronWorkerPoolBuilder::default()
+                    .id(self.id.clone())
+                    .broker(self.broker.clone())
+                    .tasks(self.tasks.clone())
+                    .state(self.state.clone())
+                    .worker_count(worker_count)
+                    .shutdown_channel(shutdown_tx.subscribe())
+                    .queue(<&str>::clone(queue))
+                    .middleware(self.middleware.clone())
+                    .build();
 
-                tokio::task::spawn(async move {
-                    IronWorkerPool::new(id, broker, tasks, queue, state, worker_count, rx)
-                        .work()
-                        .await
-                })
+                tokio::task::spawn(async move { pool.work().await })
             })
             .collect();
 

@@ -26,9 +26,9 @@ impl Broker for InProcessBroker {
             .or_insert_with(|| message);
     }
 
-    async fn dequeue(&self, _application_id: &str, queue: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
         let mut write_guard = self.queues.lock().await;
-        let queue = write_guard.entry(queue.to_string()).or_default();
+        let queue = write_guard.entry(from.to_string()).or_default();
         queue.pop_front()
     }
 
@@ -42,5 +42,4 @@ impl Broker for InProcessBroker {
 
     async fn heartbeat(&self, _application_id: &str) {}
     async fn deregister_worker(&self, _application_id: &str) {}
-    async fn mark_done(&self, _application_id: &str) {}
 }

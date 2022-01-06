@@ -1157,6 +1157,7 @@ name = "redis"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "ironworker-core",
  "ironworker-redis",
  "serde 1.0.132",

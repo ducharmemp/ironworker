@@ -5,12 +5,14 @@ use state::Container;
 use uuid::Uuid;
 
 use crate::config::IronworkerConfig;
+use crate::IronworkerMiddleware;
 use crate::{Broker, IronworkerApplication, Task};
 
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
     tasks: HashMap<&'static str, Box<dyn Task>>,
+    middleware: Vec<Box<dyn IronworkerMiddleware>>,
     queues: HashSet<&'static str>,
     state: Container![Send + Sync],
 }
@@ -33,7 +35,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
         self
     }
 
-    pub fn manage<T>(self, state: T) -> Self
+    pub fn manage<T>(self, state: T) -> IronworkerApplicationBuilder<B>
     where
         T: Send + Sync + 'static,
     {
@@ -46,11 +48,20 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
         self
     }
 
+    pub fn register_middleware<T: IronworkerMiddleware>(
+        mut self,
+        middleware: T,
+    ) -> IronworkerApplicationBuilder<B> {
+        self.middleware.push(Box::new(middleware));
+        self
+    }
+
     pub fn build(self) -> IronworkerApplication<B> {
         IronworkerApplication {
             id: self.id,
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
             broker: Arc::new(self.broker.expect("Expected a broker to be registered")),
+            middleware: Arc::new(self.middleware),
             tasks: Arc::new(self.tasks),
             queues: Arc::new(self.queues),
             state: Arc::new(self.state),
@@ -63,6 +74,7 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
         Self {
             id: Uuid::new_v4().to_string(),
             broker: None,
+            middleware: Default::default(),
             tasks: HashMap::new(),
             queues: HashSet::new(),
             state: Default::default(),

@@ -34,6 +34,7 @@ impl<T: std::fmt::Debug> From<T> for SerializableError {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SerializableMessage {
     pub job_id: String,
+    pub queue: String,
     pub task: String,
     pub payload: Value,
     pub enqueued_at: DateTime<Utc>,
@@ -42,10 +43,11 @@ pub struct SerializableMessage {
 }
 
 impl SerializableMessage {
-    pub fn from_message<T: Serialize>(task: &str, message: Message<T>) -> Self {
+    pub fn from_message<T: Serialize>(task: &str, queue: &str, message: Message<T>) -> Self {
         Self {
             job_id: Uuid::new_v4().to_string(),
             task: task.to_string(),
+            queue: queue.to_string(),
             payload: to_value(message.into_inner()).unwrap(),
             enqueued_at: Utc::now(),
             err: None,
