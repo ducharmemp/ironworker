@@ -91,12 +91,19 @@ where
         self
     }
 
-    fn retry_on<E: Into<TaggedError>>(self, _err: E) -> Self {
-        todo!()
+    fn retry_on<E: Into<TaggedError>>(mut self, err: E, config: ErrorRetryConfiguration) -> Self {
+        let tagged = err.into();
+        self.config
+            .retry_on
+            .entry(tagged.type_id)
+            .or_insert_with(|| config);
+        self
     }
 
-    fn discard_on<E: Into<TaggedError>>(self, _err: E) -> Self {
-        todo!()
+    fn discard_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
+        let tagged = err.into();
+        self.config.discard_on.insert(tagged.type_id);
+        self
     }
 
     fn retries(mut self, count: usize) -> Self {
@@ -179,9 +186,9 @@ macro_rules! impl_task_function {
                 self
             }
 
-            fn retry_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
+            fn retry_on<E: Into<TaggedError>>(mut self, err: E, config: ErrorRetryConfiguration) -> Self {
                 let tagged = err.into();
-                self.config.retry_on.entry(tagged.type_id).or_insert_with(|| ErrorRetryConfiguration::default());
+                self.config.retry_on.entry(tagged.type_id).or_insert_with(|| config);
                 self
             }
 

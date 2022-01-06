@@ -1160,6 +1160,7 @@ dependencies = [
  "ironworker-core",
  "ironworker-redis",
  "serde 1.0.132",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",

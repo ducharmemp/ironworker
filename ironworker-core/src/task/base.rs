@@ -10,7 +10,7 @@ use crate::broker::Broker;
 use crate::message::{Message, SerializableMessage};
 
 use super::config::Config;
-use super::error::TaggedError;
+use super::error::{ErrorRetryConfiguration, TaggedError};
 
 #[async_trait]
 pub trait Task: Send + Sync + 'static {
@@ -67,7 +67,7 @@ pub trait ConfigurableTask: Task {
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
     #[must_use]
-    fn retry_on<E: Into<TaggedError>>(self, err: E) -> Self;
+    fn retry_on<E: Into<TaggedError>>(self, err: E, config: ErrorRetryConfiguration) -> Self;
     #[must_use]
     fn discard_on<E: Into<TaggedError>>(self, err: E) -> Self;
     #[must_use]

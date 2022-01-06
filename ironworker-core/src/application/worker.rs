@@ -122,7 +122,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 handler.perform(message.clone(), &self.state),
             );
 
-            let processs_failed = |mut message: SerializableMessage, err: TaggedError| async move {
+            let process_failed = |mut message: SerializableMessage, err: TaggedError| async move {
                 let retry_on_config = handler_config
                     .retry_on
                     .get(&err.type_id)
@@ -136,7 +136,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 if message.retries < retries && !should_discard {
                     message.retries += 1;
                     self.broker.enqueue(queue, message).await;
-                } else {
+                } else if !should_discard {
                     self.broker.deadletter(queue, message).await;
                 }
             };
@@ -144,11 +144,11 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             match task_future.await {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
-                        processs_failed(message, e).await;
+                        process_failed(message, e).await;
                     }
                 }
                 Err(e) => {
-                    processs_failed(message, e.into()).await;
+                    process_failed(message, e.into()).await;
                 }
             }
             self.broker.mark_done(&self.id).await;

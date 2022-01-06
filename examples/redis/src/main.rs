@@ -4,10 +4,12 @@ use std::error::Error;
 
 use anyhow::Result;
 use ironworker_core::{
-    ConfigurableTask, IntoTask, IronworkerApplicationBuilder, Message, PerformableTask,
+    ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder, Message,
+    PerformableTask,
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Complex {
@@ -42,6 +44,12 @@ fn my_panicking_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>
     Ok(())
 }
 
+#[derive(Error, Debug)]
+enum TestEnum {
+    #[error("The task failed")]
+    Failed,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -63,10 +71,14 @@ async fn main() -> Result<()> {
 
     my_complex_task
         .task()
+        .retry_on(
+            TestEnum::Failed,
+            ErrorRetryConfiguration::default().with_attempts(5),
+        )
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
 
-    for _ in 0..100 {
+    for _ in 0..20000 {
         my_panicking_task.task().perform_later(&app, 123).await;
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;
