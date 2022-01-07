@@ -20,6 +20,7 @@ mod config;
 mod error;
 mod message;
 mod meta;
+mod middleware;
 mod task;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
@@ -27,4 +28,5 @@ pub use broker::Broker;
 pub use error::{IronworkerError, IronworkerResult};
 pub use message::{Message, SerializableMessage};
 pub use meta::{QueueState, WorkerState};
+pub use middleware::IronworkerMiddleware;
 pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableTask, Task};

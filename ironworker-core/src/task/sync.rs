@@ -248,7 +248,7 @@ mod test {
         let _res = status_mock
             .task()
             .perform(
-                SerializableMessage::from_message("status_mock", payload),
+                SerializableMessage::from_message("status_mock", "default", payload),
                 &Default::default(),
             )
             .await;

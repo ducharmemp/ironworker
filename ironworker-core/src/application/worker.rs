@@ -12,7 +12,100 @@ use tokio::time::{interval, timeout};
 use tracing::{debug, info};
 
 use crate::task::TaggedError;
-use crate::{Broker, SerializableMessage, Task};
+use crate::{Broker, IronworkerMiddleware, SerializableMessage, Task};
+
+type State = Container![Send + Sync];
+
+pub struct IronWorkerPoolBuilder<B: Broker> {
+    id: Option<String>,
+    broker: Option<Arc<B>>,
+    tasks: Option<Arc<HashMap<&'static str, Box<dyn Task>>>>,
+    queue: Option<&'static str>,
+    state: Option<Arc<State>>,
+    worker_count: Option<usize>,
+    shutdown_channel: Option<Receiver<()>>,
+    middleware: Option<Arc<Vec<Box<dyn IronworkerMiddleware>>>>,
+}
+
+impl<B: Broker> Default for IronWorkerPoolBuilder<B> {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            broker: Default::default(),
+            tasks: Default::default(),
+            queue: Default::default(),
+            state: Default::default(),
+            worker_count: Default::default(),
+            shutdown_channel: Default::default(),
+            middleware: Default::default(),
+        }
+    }
+}
+
+impl<B: Broker> IronWorkerPoolBuilder<B> {
+    /// Set the iron worker pool builder's id.
+    pub fn id(mut self, id: String) -> Self {
+        self.id.replace(id);
+        self
+    }
+
+    /// Set the iron worker pool builder's broker.
+    pub fn broker(mut self, broker: Arc<B>) -> Self {
+        self.broker.replace(broker);
+        self
+    }
+
+    /// Set the iron worker pool builder's tasks.
+    pub fn tasks(mut self, tasks: Arc<HashMap<&'static str, Box<dyn Task>>>) -> Self {
+        self.tasks.replace(tasks);
+        self
+    }
+
+    /// Set the iron worker pool builder's queue.
+    pub fn queue(mut self, queue: &'static str) -> Self {
+        self.queue.replace(queue);
+        self
+    }
+
+    /// Set the iron worker pool builder's state.
+    pub fn state(mut self, state: Arc<State>) -> Self {
+        self.state.replace(state);
+        self
+    }
+
+    /// Set the iron worker pool builder's worker count.
+    pub fn worker_count(mut self, worker_count: usize) -> Self {
+        self.worker_count.replace(worker_count);
+        self
+    }
+
+    /// Set the iron worker pool builder's shutdown channel.
+    pub fn shutdown_channel(mut self, shutdown_channel: Receiver<()>) -> Self {
+        self.shutdown_channel.replace(shutdown_channel);
+        self
+    }
+
+    /// Set the iron worker pool builder's middleware.
+    pub fn middleware(mut self, middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>) -> Self {
+        self.middleware.replace(middleware);
+        self
+    }
+
+    pub fn build(self) -> IronWorkerPool<B> {
+        IronWorkerPool {
+            id: self.id.expect("Id was not set"),
+            broker: self.broker.expect("Broker was not set"),
+            tasks: self.tasks.expect("Tasks was not set"),
+            middleware: self.middleware.expect("Middleware was not set"),
+            queue: self.queue.expect("Queue was not set"),
+            state: self.state.expect("State was not set"),
+            worker_count: self.worker_count.expect("Worker count was not set"),
+            shutdown_channel: self.shutdown_channel.expect("Shutdown channel was not set"),
+            current_worker_index: AtomicUsize::new(0),
+            worker_shutdown_channel: channel(1).0,
+        }
+    }
+}
 
 pub struct IronWorkerPool<B: Broker> {
     id: String,
@@ -24,33 +117,13 @@ pub struct IronWorkerPool<B: Broker> {
     shutdown_channel: Receiver<()>,
     current_worker_index: AtomicUsize,
     worker_shutdown_channel: Sender<()>,
+    middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
-    pub fn new(
-        id: String,
-        broker: Arc<B>,
-        tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
-        queue: &'static str,
-        state: Arc<Container![Send + Sync]>,
-        worker_count: usize,
-        shutdown_channel: Receiver<()>,
-    ) -> Self {
-        Self {
-            id,
-            broker,
-            tasks,
-            queue,
-            state,
-            worker_count,
-            shutdown_channel,
-            current_worker_index: AtomicUsize::new(0),
-            worker_shutdown_channel: channel(1).0,
-        }
-    }
-
     fn spawn_worker(&self) -> JoinHandle<()> {
         let broker = self.broker.clone();
+        let middleware = self.middleware.clone();
         let index = self.current_worker_index.fetch_add(1, Ordering::SeqCst);
         let id = format!("{}-{}-{}", self.id.clone(), self.queue, index);
         let tasks = self.tasks.clone();
@@ -59,7 +132,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
         let rx = self.worker_shutdown_channel.subscribe();
         tokio::task::spawn(async move {
             info!(id=?id, "Booting worker {}", id);
-            IronWorker::new(id, broker, tasks, queue, state)
+            IronWorker::new(id, broker, tasks, queue, state, middleware)
                 .work(rx)
                 .await
         })
@@ -92,6 +165,7 @@ pub struct IronWorker<B: Broker> {
     tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     queue: &'static str,
     state: Arc<Container![Send + Sync]>,
+    middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
@@ -101,6 +175,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
         queue: &'static str,
         state: Arc<Container![Send + Sync]>,
+        middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
     ) -> Self {
         Self {
             id,
@@ -108,6 +183,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             tasks,
             queue,
             state,
+            middleware,
         }
     }
 
@@ -116,6 +192,9 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
 
         let handler = self.tasks.get(&task_name.as_str());
         if let Some(handler) = handler {
+            for middleware in self.middleware.iter() {
+                middleware.on_task_start().await;
+            }
             let handler_config = handler.config();
             let task_future = timeout(
                 Duration::from_secs(30),
@@ -131,6 +210,10 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
                 let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
                 let should_discard = handler_config.discard_on.contains(&err.type_id);
+
+                for middleware in self.middleware.iter() {
+                    middleware.on_task_failure().await;
+                }
 
                 message.err = Some(err.wrapped.into());
                 if message.retries < retries && !should_discard {
@@ -151,7 +234,9 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     process_failed(message, e.into()).await;
                 }
             }
-            self.broker.mark_done(&self.id).await;
+            for middleware in self.middleware.iter() {
+                middleware.on_task_completion().await;
+            }
         }
     }
 
@@ -165,7 +250,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     self.broker.deregister_worker(&self.id).await;
                     return;
                 },
-                message = self.broker.dequeue(&self.id, self.queue) => {
+                message = self.broker.dequeue(&self.queue) => {
                     if let Some(message) = message {
                         info!(id=?self.id, "Working on job {}", message.job_id);
                         self.work_task(message).await;
@@ -207,6 +292,7 @@ mod test {
 
         let message = SerializableMessage {
             enqueued_at: Utc::now(),
+            queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: long_running.task().name().to_string(),
             payload: 123.into(),
@@ -224,6 +310,7 @@ mod test {
                 boxed_task(long_running.task()),
             )])),
             "default",
+            Default::default(),
             Default::default(),
         );
         worker.work_task(message).await;
@@ -246,6 +333,7 @@ mod test {
 
         let message = SerializableMessage {
             enqueued_at: Utc::now(),
+            queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: erroring.task().name().to_string(),
             payload: 123.into(),
@@ -264,6 +352,7 @@ mod test {
             )])),
             "default",
             Default::default(),
+            Default::default(),
         );
         worker.work_task(message).await;
         assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
@@ -277,6 +366,7 @@ mod test {
 
         let message = SerializableMessage {
             enqueued_at: Utc::now(),
+            queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: successful.task().name().to_string(),
             payload: 123.into(),
@@ -294,6 +384,7 @@ mod test {
                 boxed_task(successful.task()),
             )])),
             "default",
+            Default::default(),
             Default::default(),
         );
         worker.work_task(message).await;
@@ -313,6 +404,7 @@ mod test {
 
         let message = SerializableMessage {
             enqueued_at: Utc::now(),
+            queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: erroring.task().name().to_string(),
             payload: 123.into(),
@@ -330,6 +422,7 @@ mod test {
                 boxed_task(erroring.task().retries(1)),
             )])),
             "default",
+            Default::default(),
             Default::default(),
         );
         worker.work_task(message).await;
@@ -350,6 +443,7 @@ mod test {
 
         let message = SerializableMessage {
             enqueued_at: Utc::now(),
+            queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: erroring.task().name().to_string(),
             payload: 123.into(),
@@ -368,10 +462,16 @@ mod test {
             )])),
             "default",
             Default::default(),
+            Default::default(),
         );
         worker.work_task(message).await;
         worker
-            .work_task(broker.dequeue("test", "default").await.unwrap())
+            .work_task(
+                broker
+                    .dequeue("queue:default")
+                    .await
+                    .unwrap(),
+            )
             .await;
         assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
     }

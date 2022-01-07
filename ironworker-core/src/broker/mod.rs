@@ -9,10 +9,9 @@ pub use process::InProcessBroker;
 pub trait Broker: Send + Sync {
     async fn enqueue(&self, queue: &str, message: SerializableMessage);
     async fn deadletter(&self, queue: &str, message: SerializableMessage);
-    async fn dequeue(&self, application_id: &str, queue: &str) -> Option<SerializableMessage>;
+    async fn dequeue(&self, from: &str) -> Option<SerializableMessage>;
     async fn list_workers(&self) -> Vec<WorkerState>;
     async fn list_queues(&self) -> Vec<QueueState>;
     async fn heartbeat(&self, application_id: &str);
     async fn deregister_worker(&self, application_id: &str);
-    async fn mark_done(&self, application_id: &str);
 }

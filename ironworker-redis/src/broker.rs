@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
@@ -67,14 +66,11 @@ impl Broker for RedisBroker {
             .unwrap();
     }
 
-    async fn dequeue(&self, application_id: &str, queue: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
         let mut conn = self.pool.get().await.unwrap();
-        let reserved_key = Self::format_reserved_key(application_id);
-        let queue_key = Self::format_queue_key(queue);
+        let from = Self::format_queue_key(from);
 
-        let item = conn
-            .brpoplpush::<_, RedisMessage>(&queue_key, &reserved_key, 5)
-            .await;
+        let item = conn.brpop::<_, RedisMessage>(&from, 5).await;
         let item = item.ok()?;
         Some(item.into())
     }
@@ -142,15 +138,6 @@ impl Broker for RedisBroker {
     async fn deregister_worker(&self, application_id: &str) {
         let mut conn = self.pool.get().await.unwrap();
         conn.del::<_, ()>(application_id).await.unwrap();
-    }
-
-    async fn mark_done(&self, application_id: &str) {
-        let mut conn = self.pool.get().await.unwrap();
-        let reserved_key = Self::format_reserved_key(application_id);
-
-        conn.lpop::<_, ()>(reserved_key, NonZeroUsize::new(1))
-            .await
-            .unwrap();
     }
 }
 

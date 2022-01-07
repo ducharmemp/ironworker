@@ -3,13 +3,31 @@
 use std::error::Error;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use ironworker_core::{
-    ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder, Message,
-    PerformableTask,
+    ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder,
+    IronworkerMiddleware, Message, PerformableTask,
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+struct Middleware;
+
+#[async_trait]
+impl IronworkerMiddleware for Middleware {
+    async fn on_task_start(&self) {
+        dbg!("Started");
+    }
+
+    async fn on_task_completion(&self) {
+        dbg!("Completed");
+    }
+
+    async fn on_task_failure(&self) {
+        dbg!("Failed");
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Complex {
@@ -39,9 +57,8 @@ fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn my_panicking_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-    panic!("Panic!");
-    Ok(())
+fn my_panicking_task(_message: Message<u32>) -> Result<(), TestEnum> {
+    Err(TestEnum::Failed)
 }
 
 #[derive(Error, Debug)]
@@ -60,6 +77,7 @@ async fn main() -> Result<()> {
         .register_task(my_async_task.task().queue_as("async"))
         .register_task(test_multiple.task())
         .register_task(my_panicking_task.task())
+        .register_middleware(Middleware)
         .build();
 
     // my_task.task().perform_now(&app, 123).await.unwrap();
@@ -78,7 +96,7 @@ async fn main() -> Result<()> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
 
-    for _ in 0..20000 {
+    for _ in 0..100 {
         my_panicking_task.task().perform_later(&app, 123).await;
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;
