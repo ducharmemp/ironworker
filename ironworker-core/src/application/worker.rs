@@ -247,6 +247,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
         loop {
             select!(
                 _ = shutdown_channel.recv() => {
+                    info!(id=?self.id, "Shutdown received, exiting...");
                     self.broker.deregister_worker(&self.id).await;
                     return;
                 },

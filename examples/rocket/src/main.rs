@@ -14,19 +14,18 @@ use ironworker_core::{
     IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, PerformableTask,
 };
 use ironworker_redis::RedisBroker;
+use ironworker_rocket::IronworkerFairing;
 use rocket::fairing::AdHoc;
 use rocket::response::{status::Created, Debug};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::{Build, Rocket, State};
 
 use diesel::prelude::*;
-use rocket_sync_db_pools::ConnectionPool;
 
 #[database("diesel")]
 struct Db(diesel::SqliteConnection);
 
 type Result<T, E = Debug<diesel::result::Error>> = std::result::Result<T, E>;
-type SqlitePool = ConnectionPool<Db, diesel::SqliteConnection>;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Queryable, Insertable)]
 #[serde(crate = "rocket::serde")]
@@ -148,26 +147,13 @@ pub async fn stage() -> AdHoc {
         rocket
             .attach(Db::fairing())
             .attach(AdHoc::on_ignite("Diesel Migrations", run_migrations))
-            .attach(AdHoc::on_ignite("Ironworker Setup", |rocket| async move {
-                rocket.manage(Arc::new(app))
-            }))
-            .attach(AdHoc::on_liftoff("Run Ironworker", |rocket| {
-                Box::pin(async move {
-                    if let Some(app) = rocket.state::<Arc<IronworkerApplication<RedisBroker>>>() {
-                        let pool = rocket.state::<SqlitePool>().unwrap();
-                        let app = app.clone();
-                        app.manage(pool.clone());
-                        tokio::spawn(async move {
-                            app.run().await;
-                        });
-                    }
-                })
-            }))
+            .attach(IronworkerFairing::new("/queues", app))
             .mount("/diesel", routes![list, read, create, delete, destroy])
     })
 }
 
 #[launch]
 async fn rocket() -> _ {
+    tracing_subscriber::fmt::init();
     rocket::build().attach(stage().await)
 }

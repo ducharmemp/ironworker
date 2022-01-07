@@ -27,7 +27,7 @@ impl IronworkerConfig {
     pub fn new() -> Result<Self, ConfigError> {
         let mut s = Config::default();
 
-        s.merge(File::with_name("Ironworker").required(true))?;
+        s.merge(File::with_name("Ironworker").required(false))?;
         s.merge(Environment::with_prefix("ironworker"))?;
 
         s.try_into()

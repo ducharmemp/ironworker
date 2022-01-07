@@ -8,7 +8,7 @@ use futures::future::join_all;
 use serde::Serialize;
 use state::Container;
 use tokio::select;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::Notify;
 use tokio::sync::broadcast::channel;
 use tracing::debug;
 
@@ -27,6 +27,7 @@ pub struct IronworkerApplication<B: Broker> {
     pub(crate) queues: Arc<HashSet<&'static str>>,
     pub(crate) config: IronworkerConfig,
     pub(crate) state: Arc<Container![Send + Sync]>,
+    pub(crate) notify_shutdown: Notify
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
@@ -49,6 +50,10 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         self.broker.list_queues().await
     }
 
+    pub fn shutdown(&self) {
+        self.notify_shutdown.notify_one()
+    }
+
     pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(&self, task: &str, payload: P) {
         let message: Message<P> = payload.into();
         let handler = self.tasks.get(task).unwrap();
@@ -64,7 +69,6 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
 
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
-        let mut ctrl_c_signal = signal(SignalKind::interrupt()).unwrap();
 
         let mut handles: Vec<_> = self
             .queues
@@ -94,11 +98,11 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
             .collect();
 
         select!(
-            _ = join_all(&mut handles) => {},
-            _ = ctrl_c_signal.recv() => {
+            _ = self.notify_shutdown.notified() => {
                 shutdown_tx.send(()).expect("All workers have already been dropped");
                 join_all(&mut handles).await;
-            }
+            },
+            _ = join_all(&mut handles) => {},
         );
     }
 }

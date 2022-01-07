@@ -51,9 +51,16 @@ impl<B: Broker + 'static> Fairing for IronworkerFairing<B> {
 
     async fn on_liftoff(&'_ self, rocket: &'_ Rocket<Orbit>) {
         if let Some(app) = rocket.state::<Arc<IronworkerApplication<RedisBroker>>>() {
-            let app = app.clone();
+            let run_handle = app.clone();
+            let shutdown_handle = app.clone();
+            let shutdown = rocket.shutdown();
             tokio::spawn(async move {
-                app.run().await;
+                run_handle.run().await;
+            });
+
+            tokio::spawn(async move {
+                shutdown.await;
+                shutdown_handle.shutdown();
             });
         }
     }
