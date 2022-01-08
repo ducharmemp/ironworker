@@ -9,8 +9,9 @@ use tokio::select;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
+use crate::message::SerializableError;
 use crate::task::TaggedError;
 use crate::{Broker, IronworkerMiddleware, SerializableMessage, Task};
 
@@ -215,7 +216,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     middleware.on_task_failure().await;
                 }
 
-                message.err = Some(err.wrapped.into());
+                message.err = Some(SerializableError::from_tagged(err));
                 if message.retries < retries && !should_discard {
                     message.retries += 1;
                     self.broker.enqueue(queue, message).await;
@@ -227,6 +228,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
             match task_future.await {
                 Ok(task_result) => {
                     if let Err(e) = task_result {
+                        error!(id=?self.id, "Task {} failed", message.job_id);
                         process_failed(message, e).await;
                     }
                 }

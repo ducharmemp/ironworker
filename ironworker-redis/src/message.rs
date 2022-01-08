@@ -2,7 +2,7 @@ use ironworker_core::SerializableMessage;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct RedisMessage(SerializableMessage);
 
 impl From<SerializableMessage> for RedisMessage {
@@ -28,7 +28,7 @@ impl ToRedisArgs for RedisMessage {
 
 impl FromRedisValue for RedisMessage {
     fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        match *v {
+        match &*v {
             Value::Data(_) => {
                 let out = String::from_redis_value(v)?;
                 let deserialized = serde_json::from_str(&out)

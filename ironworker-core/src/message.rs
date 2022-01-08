@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
 use uuid::Uuid;
 
+use crate::task::TaggedError;
+
 #[derive(Debug)]
 pub struct Message<T>(T);
 
@@ -18,20 +20,20 @@ impl<T> Message<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableError {
     message: String,
 }
 
-impl<T: std::fmt::Debug> From<T> for SerializableError {
-    fn from(err: T) -> Self {
+impl SerializableError {
+    pub fn from_tagged(err: TaggedError) -> Self {
         Self {
-            message: format!("{:?}", err),
+            message: format!("{:?}", err.wrapped),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableMessage {
     pub job_id: String,
     pub queue: String,

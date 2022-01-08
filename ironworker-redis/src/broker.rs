@@ -52,7 +52,6 @@ impl Broker for RedisBroker {
         let mut conn = self.pool.get().await.unwrap();
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
-
         conn.lpush::<_, _, ()>(&queue_key, message).await.unwrap();
     }
 
@@ -70,8 +69,9 @@ impl Broker for RedisBroker {
         let mut conn = self.pool.get().await.unwrap();
         let from = Self::format_queue_key(from);
 
-        let item = conn.brpop::<_, RedisMessage>(&from, 5).await;
-        let item = item.ok()?;
+        let items = conn.brpop::<_, Vec<RedisMessage>>(&from, 5).await;
+        let mut items = items.ok()?;
+        let item = items.remove(0);
         Some(item.into())
     }
 

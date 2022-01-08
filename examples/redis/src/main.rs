@@ -17,15 +17,15 @@ struct Middleware;
 #[async_trait]
 impl IronworkerMiddleware for Middleware {
     async fn on_task_start(&self) {
-        dbg!("Started");
+        // dbg!("Started");
     }
 
     async fn on_task_completion(&self) {
-        dbg!("Completed");
+        // dbg!("Completed");
     }
 
     async fn on_task_failure(&self) {
-        dbg!("Failed");
+        // dbg!("Failed");
     }
 }
 
@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))
         .register_task(test_multiple.task())
-        .register_task(my_panicking_task.task())
+        .register_task(my_panicking_task.task().retries(5))
         .register_middleware(Middleware)
         .build();
 
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
 
-    for _ in 0..100 {
+    for _ in 0..2 {
         my_panicking_task.task().perform_later(&app, 123).await;
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;
