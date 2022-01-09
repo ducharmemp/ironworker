@@ -9,7 +9,7 @@ use tokio::select;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
-use tracing::{debug, info, error};
+use tracing::{debug, error, info};
 
 use crate::message::SerializableError;
 use crate::task::TaggedError;
@@ -253,7 +253,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     self.broker.deregister_worker(&self.id).await;
                     return;
                 },
-                message = self.broker.dequeue(&self.queue) => {
+                message = self.broker.dequeue(self.queue) => {
                     if let Some(message) = message {
                         info!(id=?self.id, "Working on job {}", message.job_id);
                         self.work_task(message).await;
@@ -469,12 +469,7 @@ mod test {
         );
         worker.work_task(message).await;
         worker
-            .work_task(
-                broker
-                    .dequeue("default")
-                    .await
-                    .unwrap(),
-            )
+            .work_task(broker.dequeue("default").await.unwrap())
             .await;
         assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
     }

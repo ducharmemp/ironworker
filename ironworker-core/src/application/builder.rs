@@ -66,7 +66,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
             queues: Arc::new(self.queues),
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
             state: Arc::new(self.state),
-            notify_shutdown: Notify::new()
+            notify_shutdown: Notify::new(),
         }
     }
 }

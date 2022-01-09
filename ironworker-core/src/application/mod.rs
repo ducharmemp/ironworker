@@ -8,8 +8,8 @@ use futures::future::join_all;
 use serde::Serialize;
 use state::Container;
 use tokio::select;
-use tokio::sync::Notify;
 use tokio::sync::broadcast::channel;
+use tokio::sync::Notify;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
@@ -27,7 +27,7 @@ pub struct IronworkerApplication<B: Broker> {
     pub(crate) queues: Arc<HashSet<&'static str>>,
     pub(crate) config: IronworkerConfig,
     pub(crate) state: Arc<Container![Send + Sync]>,
-    pub(crate) notify_shutdown: Notify
+    pub(crate) notify_shutdown: Notify,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {

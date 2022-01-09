@@ -1,8 +1,8 @@
-use uuid::Uuid;
+use chrono::Utc;
 use ironworker_core::{Broker, SerializableMessage};
 use ironworker_redis::RedisBroker;
 use serde_json::Value;
-use chrono::Utc;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn test_enqueue() {
@@ -37,12 +37,7 @@ async fn test_dequeue() {
         err: None,
         retries: 0,
     };
-    broker
-        .enqueue(
-            queue,
-            enqueued_message.clone(),
-        )
-        .await;
+    broker.enqueue(queue, enqueued_message.clone()).await;
 
     let message = broker.dequeue(queue).await;
     assert_eq!(enqueued_message, message.unwrap());
@@ -55,7 +50,6 @@ async fn test_dequeue_no_message() {
     let message = broker.dequeue(queue).await;
     assert_eq!(None, message);
 }
-
 
 #[tokio::test]
 async fn test_deadletter() {
