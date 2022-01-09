@@ -20,7 +20,7 @@ impl<T> Message<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SerializableError {
     message: String,
 }
@@ -33,7 +33,7 @@ impl SerializableError {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SerializableMessage {
     pub job_id: String,
     pub queue: String,

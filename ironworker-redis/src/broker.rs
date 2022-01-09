@@ -71,7 +71,8 @@ impl Broker for RedisBroker {
 
         let items = conn.brpop::<_, Vec<RedisMessage>>(&from, 5).await;
         let mut items = items.ok()?;
-        let item = items.remove(0);
+        // This works as long as we don't have prefetching
+        let item = items.pop()?;
         Some(item.into())
     }
 
@@ -139,10 +140,4 @@ impl Broker for RedisBroker {
         let mut conn = self.pool.get().await.unwrap();
         conn.del::<_, ()>(application_id).await.unwrap();
     }
-}
-
-#[cfg(test)]
-mod test {
-    #[tokio::test]
-    async fn enqueue_pushed_to_a_list() {}
 }

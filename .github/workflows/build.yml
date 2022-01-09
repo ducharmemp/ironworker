@@ -2,6 +2,11 @@ name: Ironworker CI
 on: [push, pull_request]
 jobs:
   ci:
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
     name: "Test ${{ matrix.rust }}"
     runs-on: ubuntu-latest
     strategy:
@@ -29,6 +34,9 @@ jobs:
         with:
           command: fmt
           args: -- --check
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
       - uses: actions-rs/cargo@v1
         with:
           command: build

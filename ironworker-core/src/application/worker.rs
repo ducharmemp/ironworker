@@ -330,8 +330,8 @@ mod test {
             Failed,
         }
 
-        async fn erroring(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-            Err(Box::new(TestEnum::Failed))
+        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
+            Err(TestEnum::Failed)
         }
 
         let message = SerializableMessage {
@@ -401,8 +401,8 @@ mod test {
             Failed,
         }
 
-        async fn erroring(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-            Err(Box::new(TestEnum::Failed))
+        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
+            Err(TestEnum::Failed)
         }
 
         let message = SerializableMessage {
@@ -440,8 +440,8 @@ mod test {
             Failed,
         }
 
-        async fn erroring(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-            Err(Box::new(TestEnum::Failed))
+        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
+            Err(TestEnum::Failed)
         }
 
         let message = SerializableMessage {
@@ -471,7 +471,7 @@ mod test {
         worker
             .work_task(
                 broker
-                    .dequeue("queue:default")
+                    .dequeue("default")
                     .await
                     .unwrap(),
             )
