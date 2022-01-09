@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use askama::Template;
 use async_trait::async_trait;
-use ironworker_core::{Broker, IronworkerApplication, QueueState, WorkerState};
+use ironworker_core::info::{ApplicationInfo, QueueInfo, WorkerInfo};
+use ironworker_core::{Broker, IronworkerApplication};
 use ironworker_redis::RedisBroker;
 use rocket::fairing::{Fairing, Info, Kind, Result};
 use rocket::{tokio, State};
@@ -14,14 +15,14 @@ use rocket::{Build, Orbit, Rocket};
 #[derive(Template)]
 #[template(path = "index.html")]
 struct OverviewTemplate {
-    workers: Vec<WorkerState>,
-    queues: Vec<QueueState>,
+    workers: Vec<WorkerInfo>,
+    queues: Vec<QueueInfo>,
 }
 
 #[get("/")]
 async fn index(app: &State<Arc<IronworkerApplication<RedisBroker>>>) -> OverviewTemplate {
-    let workers = app.list_workers().await;
-    let queues = app.list_queues().await;
+    let workers = app.workers().await;
+    let queues = app.queues().await;
 
     OverviewTemplate { workers, queues }
 }

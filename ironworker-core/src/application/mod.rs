@@ -1,33 +1,30 @@
 mod builder;
+mod shared;
 mod worker;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use futures::future::join_all;
 use serde::Serialize;
-use state::Container;
+
 use tokio::select;
 use tokio::sync::broadcast::channel;
 use tokio::sync::Notify;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
-use crate::{
-    Broker, IronworkerMiddleware, Message, QueueState, SerializableMessage, Task, WorkerState,
-};
+use crate::{Broker, Message, SerializableMessage};
 pub use builder::IronworkerApplicationBuilder;
-use worker::IronWorkerPoolBuilder;
+use shared::SharedData;
+use worker::IronWorkerPool;
 
 pub struct IronworkerApplication<B: Broker> {
     pub(crate) id: String,
-    pub(crate) broker: Arc<B>,
-    pub(crate) tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
-    pub(crate) middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
-    pub(crate) queues: Arc<HashSet<&'static str>>,
+    pub(crate) queues: HashSet<&'static str>,
     pub(crate) config: IronworkerConfig,
-    pub(crate) state: Arc<Container![Send + Sync]>,
     pub(crate) notify_shutdown: Notify,
+    pub(crate) shared_data: Arc<SharedData<B>>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
@@ -36,18 +33,10 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         T: Send + Sync + 'static,
     {
         // let type_name = std::any::type_name::<T>();
-        if !self.state.set(state) {
+        if !self.shared_data.state.set(state) {
             // error!("state for type '{}' is already being managed", type_name);
             panic!("aborting due to duplicately managed state");
         }
-    }
-
-    pub async fn list_workers(&self) -> Vec<WorkerState> {
-        self.broker.list_workers().await
-    }
-
-    pub async fn list_queues(&self) -> Vec<QueueState> {
-        self.broker.list_queues().await
     }
 
     pub fn shutdown(&self) {
@@ -56,13 +45,14 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
 
     pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(&self, task: &str, payload: P) {
         let message: Message<P> = payload.into();
-        let handler = self.tasks.get(task).unwrap();
+        let handler = self.shared_data.tasks.get(task).unwrap();
         let handler_config = handler.config();
 
         let serializable = SerializableMessage::from_message(task, handler_config.queue, message);
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
 
-        self.broker
+        self.shared_data
+            .broker
             .enqueue(handler_config.queue, serializable)
             .await;
     }
@@ -82,16 +72,13 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
                     .map(|queue| queue.concurrency)
                     .unwrap_or(default_count);
 
-                let pool = IronWorkerPoolBuilder::default()
-                    .id(self.id.clone())
-                    .broker(self.broker.clone())
-                    .tasks(self.tasks.clone())
-                    .state(self.state.clone())
-                    .worker_count(worker_count)
-                    .shutdown_channel(shutdown_tx.subscribe())
-                    .queue(<&str>::clone(queue))
-                    .middleware(self.middleware.clone())
-                    .build();
+                let pool = IronWorkerPool::new(
+                    self.id.clone(),
+                    <&str>::clone(queue),
+                    worker_count,
+                    shutdown_tx.subscribe(),
+                    self.shared_data.clone(),
+                );
 
                 tokio::task::spawn(async move { pool.work().await })
             })

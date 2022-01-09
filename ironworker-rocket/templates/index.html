@@ -17,7 +17,7 @@
       <tr>
         <td>{{worker.name}}</td>
         <td>
-          {% match worker.queues %}
+          {% match worker.queue %}
           {% when Some with (val) %}
           {{val}}
           {% when None %}

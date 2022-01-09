@@ -1,10 +1,9 @@
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicUsize, Arc};
 use std::time::Duration;
 
 use futures::future::select_all;
-use state::Container;
+
 use tokio::select;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -13,130 +12,47 @@ use tracing::{debug, error, info};
 
 use crate::message::SerializableError;
 use crate::task::TaggedError;
-use crate::{Broker, IronworkerMiddleware, SerializableMessage, Task};
+use crate::{Broker, SerializableMessage};
 
-type State = Container![Send + Sync];
-
-pub struct IronWorkerPoolBuilder<B: Broker> {
-    id: Option<String>,
-    broker: Option<Arc<B>>,
-    tasks: Option<Arc<HashMap<&'static str, Box<dyn Task>>>>,
-    queue: Option<&'static str>,
-    state: Option<Arc<State>>,
-    worker_count: Option<usize>,
-    shutdown_channel: Option<Receiver<()>>,
-    middleware: Option<Arc<Vec<Box<dyn IronworkerMiddleware>>>>,
-}
-
-impl<B: Broker> Default for IronWorkerPoolBuilder<B> {
-    fn default() -> Self {
-        Self {
-            id: Default::default(),
-            broker: Default::default(),
-            tasks: Default::default(),
-            queue: Default::default(),
-            state: Default::default(),
-            worker_count: Default::default(),
-            shutdown_channel: Default::default(),
-            middleware: Default::default(),
-        }
-    }
-}
-
-impl<B: Broker> IronWorkerPoolBuilder<B> {
-    /// Set the iron worker pool builder's id.
-    pub fn id(mut self, id: String) -> Self {
-        self.id.replace(id);
-        self
-    }
-
-    /// Set the iron worker pool builder's broker.
-    pub fn broker(mut self, broker: Arc<B>) -> Self {
-        self.broker.replace(broker);
-        self
-    }
-
-    /// Set the iron worker pool builder's tasks.
-    pub fn tasks(mut self, tasks: Arc<HashMap<&'static str, Box<dyn Task>>>) -> Self {
-        self.tasks.replace(tasks);
-        self
-    }
-
-    /// Set the iron worker pool builder's queue.
-    pub fn queue(mut self, queue: &'static str) -> Self {
-        self.queue.replace(queue);
-        self
-    }
-
-    /// Set the iron worker pool builder's state.
-    pub fn state(mut self, state: Arc<State>) -> Self {
-        self.state.replace(state);
-        self
-    }
-
-    /// Set the iron worker pool builder's worker count.
-    pub fn worker_count(mut self, worker_count: usize) -> Self {
-        self.worker_count.replace(worker_count);
-        self
-    }
-
-    /// Set the iron worker pool builder's shutdown channel.
-    pub fn shutdown_channel(mut self, shutdown_channel: Receiver<()>) -> Self {
-        self.shutdown_channel.replace(shutdown_channel);
-        self
-    }
-
-    /// Set the iron worker pool builder's middleware.
-    pub fn middleware(mut self, middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>) -> Self {
-        self.middleware.replace(middleware);
-        self
-    }
-
-    pub fn build(self) -> IronWorkerPool<B> {
-        IronWorkerPool {
-            id: self.id.expect("Id was not set"),
-            broker: self.broker.expect("Broker was not set"),
-            tasks: self.tasks.expect("Tasks was not set"),
-            middleware: self.middleware.expect("Middleware was not set"),
-            queue: self.queue.expect("Queue was not set"),
-            state: self.state.expect("State was not set"),
-            worker_count: self.worker_count.expect("Worker count was not set"),
-            shutdown_channel: self.shutdown_channel.expect("Shutdown channel was not set"),
-            current_worker_index: AtomicUsize::new(0),
-            worker_shutdown_channel: channel(1).0,
-        }
-    }
-}
+use super::shared::SharedData;
 
 pub struct IronWorkerPool<B: Broker> {
     id: String,
-    broker: Arc<B>,
-    tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     queue: &'static str,
-    state: Arc<Container![Send + Sync]>,
     worker_count: usize,
     shutdown_channel: Receiver<()>,
     current_worker_index: AtomicUsize,
     worker_shutdown_channel: Sender<()>,
-    middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
+    shared_data: Arc<SharedData<B>>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
+    pub fn new(
+        id: String,
+        queue: &'static str,
+        worker_count: usize,
+        shutdown_channel: Receiver<()>,
+        shared_data: Arc<SharedData<B>>,
+    ) -> Self {
+        Self {
+            id,
+            queue,
+            worker_count,
+            shutdown_channel,
+            current_worker_index: AtomicUsize::new(0),
+            worker_shutdown_channel: channel(1).0,
+            shared_data,
+        }
+    }
+
     fn spawn_worker(&self) -> JoinHandle<()> {
-        let broker = self.broker.clone();
-        let middleware = self.middleware.clone();
         let index = self.current_worker_index.fetch_add(1, Ordering::SeqCst);
         let id = format!("{}-{}-{}", self.id.clone(), self.queue, index);
-        let tasks = self.tasks.clone();
-        let state = self.state.clone();
         let queue = self.queue;
         let rx = self.worker_shutdown_channel.subscribe();
-        tokio::task::spawn(async move {
-            info!(id=?id, "Booting worker {}", id);
-            IronWorker::new(id, broker, tasks, queue, state, middleware)
-                .work(rx)
-                .await
-        })
+        info!(id=?id, "Booting worker {}", &id);
+        let worker = IronWorker::new(id, queue, self.shared_data.clone());
+        tokio::task::spawn(async move { worker.work(rx).await })
     }
 
     pub async fn work(mut self) {
@@ -162,44 +78,31 @@ impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
 
 pub struct IronWorker<B: Broker> {
     id: String,
-    broker: Arc<B>,
-    tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
     queue: &'static str,
-    state: Arc<Container![Send + Sync]>,
-    middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
+    shared_data: Arc<SharedData<B>>,
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
-    pub fn new(
-        id: String,
-        broker: Arc<B>,
-        tasks: Arc<HashMap<&'static str, Box<dyn Task>>>,
-        queue: &'static str,
-        state: Arc<Container![Send + Sync]>,
-        middleware: Arc<Vec<Box<dyn IronworkerMiddleware>>>,
-    ) -> Self {
+    pub fn new(id: String, queue: &'static str, shared_data: Arc<SharedData<B>>) -> Self {
         Self {
             id,
-            broker,
-            tasks,
             queue,
-            state,
-            middleware,
+            shared_data,
         }
     }
 
     async fn work_task(&self, message: SerializableMessage) {
         let task_name = message.task.clone();
 
-        let handler = self.tasks.get(&task_name.as_str());
+        let handler = self.shared_data.tasks.get(&task_name.as_str());
         if let Some(handler) = handler {
-            for middleware in self.middleware.iter() {
+            for middleware in self.shared_data.middleware.iter() {
                 middleware.on_task_start().await;
             }
             let handler_config = handler.config();
             let task_future = timeout(
                 Duration::from_secs(30),
-                handler.perform(message.clone(), &self.state),
+                handler.perform(message.clone(), &self.shared_data.state),
             );
 
             let process_failed = |mut message: SerializableMessage, err: TaggedError| async move {
@@ -212,16 +115,16 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
                 let should_discard = handler_config.discard_on.contains(&err.type_id);
 
-                for middleware in self.middleware.iter() {
+                for middleware in self.shared_data.middleware.iter() {
                     middleware.on_task_failure().await;
                 }
 
                 message.err = Some(SerializableError::from_tagged(err));
                 if message.retries < retries && !should_discard {
                     message.retries += 1;
-                    self.broker.enqueue(queue, message).await;
+                    self.shared_data.broker.enqueue(queue, message).await;
                 } else if !should_discard {
-                    self.broker.deadletter(queue, message).await;
+                    self.shared_data.broker.deadletter(queue, message).await;
                 }
             };
 
@@ -236,7 +139,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     process_failed(message, e.into()).await;
                 }
             }
-            for middleware in self.middleware.iter() {
+            for middleware in self.shared_data.middleware.iter() {
                 middleware.on_task_completion().await;
             }
         }
@@ -244,16 +147,16 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
 
     pub async fn work(self, mut shutdown_channel: Receiver<()>) {
         let mut interval = interval(Duration::from_millis(5000));
-        self.broker.heartbeat(&self.id).await;
+        self.shared_data.broker.heartbeat(&self.id).await;
 
         loop {
             select!(
                 _ = shutdown_channel.recv() => {
                     info!(id=?self.id, "Shutdown received, exiting...");
-                    self.broker.deregister_worker(&self.id).await;
+                    self.shared_data.broker.deregister_worker(&self.id).await;
                     return;
                 },
-                message = self.broker.dequeue(self.queue) => {
+                message = self.shared_data.broker.dequeue(self.queue) => {
                     if let Some(message) = message {
                         info!(id=?self.id, "Working on job {}", message.job_id);
                         self.work_task(message).await;
@@ -261,7 +164,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                 }
                 _ = interval.tick() => {
                     debug!(id=?self.id, "Emitting heartbeat");
-                    self.broker.heartbeat(&self.id).await;
+                    self.shared_data.broker.heartbeat(&self.id).await;
                 },
             );
         }
@@ -270,13 +173,13 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
 
 #[cfg(test)]
 mod test {
-    use std::error::Error;
+    use std::{collections::HashMap, error::Error};
 
     use chrono::Utc;
     use thiserror::Error;
     use tokio::time::{self, sleep};
 
-    use crate::{broker::InProcessBroker, ConfigurableTask, IntoTask, Message};
+    use crate::{broker::InProcessBroker, IntoTask, Message, Task};
 
     use super::*;
 
@@ -303,23 +206,21 @@ mod test {
             retries: 0,
         };
 
-        let broker = Arc::new(InProcessBroker::default());
-
-        let worker = IronWorker::new(
-            "test".to_string(),
-            broker.clone(),
-            Arc::new(HashMap::from_iter([(
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(
                 long_running.task().name(),
                 boxed_task(long_running.task()),
-            )])),
-            "default",
-            Default::default(),
-            Default::default(),
-        );
+            )]),
+            state: Default::default(),
+        });
+
+        let worker = IronWorker::new("test".to_string(), "default", shared.clone());
         worker.work_task(message).await;
         time::advance(Duration::from_secs(45)).await;
 
-        assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
+        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
 
     #[tokio::test]
@@ -344,21 +245,16 @@ mod test {
             retries: 0,
         };
 
-        let broker = Arc::new(InProcessBroker::default());
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
+            state: Default::default(),
+        });
 
-        let worker = IronWorker::new(
-            "test".to_string(),
-            broker.clone(),
-            Arc::new(HashMap::from_iter([(
-                erroring.task().name(),
-                boxed_task(erroring.task()),
-            )])),
-            "default",
-            Default::default(),
-            Default::default(),
-        );
+        let worker = IronWorker::new("test".to_string(), "default", shared.clone());
         worker.work_task(message).await;
-        assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
+        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
 
     #[tokio::test]
@@ -377,18 +273,20 @@ mod test {
             retries: 0,
         };
 
-        let broker = Arc::new(InProcessBroker::default());
+        let broker = InProcessBroker::default();
 
         let worker = IronWorker::new(
             "test".to_string(),
-            broker.clone(),
-            Arc::new(HashMap::from_iter([(
-                successful.task().name(),
-                boxed_task(successful.task()),
-            )])),
             "default",
-            Default::default(),
-            Default::default(),
+            Arc::new(SharedData {
+                broker,
+                middleware: Default::default(),
+                tasks: HashMap::from_iter([(
+                    successful.task().name(),
+                    boxed_task(successful.task()),
+                )]),
+                state: Default::default(),
+            }),
         );
         worker.work_task(message).await;
     }
@@ -415,21 +313,16 @@ mod test {
             retries: 0,
         };
 
-        let broker = Arc::new(InProcessBroker::default());
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
+            state: Default::default(),
+        });
 
-        let worker = IronWorker::new(
-            "test".to_string(),
-            broker.clone(),
-            Arc::new(HashMap::from_iter([(
-                erroring.task().name(),
-                boxed_task(erroring.task().retries(1)),
-            )])),
-            "default",
-            Default::default(),
-            Default::default(),
-        );
+        let worker = IronWorker::new("test".to_string(), "default", shared.clone());
         worker.work_task(message).await;
-        assert_eq!(broker.queues.lock().await["default"].len(), 1);
+        assert_eq!(shared.broker.queues.lock().await["default"].len(), 1);
     }
 
     #[tokio::test]
@@ -454,23 +347,18 @@ mod test {
             retries: 0,
         };
 
-        let broker = Arc::new(InProcessBroker::default());
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
+            state: Default::default(),
+        });
 
-        let worker = IronWorker::new(
-            "test".to_string(),
-            broker.clone(),
-            Arc::new(HashMap::from_iter([(
-                erroring.task().name(),
-                boxed_task(erroring.task().retries(1)),
-            )])),
-            "default",
-            Default::default(),
-            Default::default(),
-        );
+        let worker = IronWorker::new("test".to_string(), "default", shared.clone());
         worker.work_task(message).await;
         worker
-            .work_task(broker.dequeue("default").await.unwrap())
+            .work_task(shared.broker.dequeue("default").await.unwrap())
             .await;
-        assert_eq!(broker.deadletter.lock().await.keys().len(), 1);
+        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
 }

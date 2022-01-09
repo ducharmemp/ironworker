@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::{Broker, QueueState, SerializableMessage, WorkerState};
+use crate::{Broker, SerializableMessage};
 
 #[derive(Default)]
 pub struct InProcessBroker {
@@ -30,14 +30,6 @@ impl Broker for InProcessBroker {
         let mut write_guard = self.queues.lock().await;
         let queue = write_guard.entry(from.to_string()).or_default();
         queue.pop_front()
-    }
-
-    async fn list_workers(&self) -> Vec<WorkerState> {
-        vec![]
-    }
-
-    async fn list_queues(&self) -> Vec<QueueState> {
-        vec![]
     }
 
     async fn heartbeat(&self, _application_id: &str) {}

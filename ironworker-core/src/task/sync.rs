@@ -269,7 +269,10 @@ mod test {
             .register_task(some_task.task())
             .build();
         some_task.task().perform_later(&app, 123).await;
-        assert_eq!(app.broker.queues.lock().await["default"].len(), 1);
+        assert_eq!(
+            app.shared_data.broker.queues.lock().await["default"].len(),
+            1
+        );
     }
 
     #[tokio::test]

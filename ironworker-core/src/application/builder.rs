@@ -9,6 +9,8 @@ use crate::config::IronworkerConfig;
 use crate::IronworkerMiddleware;
 use crate::{Broker, IronworkerApplication, Task};
 
+use super::shared::SharedData;
+
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
@@ -60,13 +62,15 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
     pub fn build(self) -> IronworkerApplication<B> {
         IronworkerApplication {
             id: self.id,
-            broker: Arc::new(self.broker.expect("Expected a broker to be registered")),
-            tasks: Arc::new(self.tasks),
-            middleware: Arc::new(self.middleware),
-            queues: Arc::new(self.queues),
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
-            state: Arc::new(self.state),
             notify_shutdown: Notify::new(),
+            queues: self.queues,
+            shared_data: Arc::new(SharedData {
+                broker: self.broker.expect("Expected a broker to be registered"),
+                tasks: self.tasks,
+                state: self.state,
+                middleware: self.middleware,
+            }),
         }
     }
 }

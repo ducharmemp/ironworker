@@ -4,8 +4,11 @@ use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use deadpool_redis::{Config, Pool, Runtime};
 use futures::future;
+use ironworker_core::info::{
+    BrokerInfo, DeadletteredInfo, QueueInfo, ScheduledInfo, Stats, WorkerInfo,
+};
+use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
-use ironworker_core::{Broker, QueueState, WorkerState};
 use redis::{pipe, AsyncCommands};
 
 use crate::message::RedisMessage;
@@ -76,53 +79,6 @@ impl Broker for RedisBroker {
         Some(item.into())
     }
 
-    async fn list_workers(&self) -> Vec<WorkerState> {
-        let worker_ids = {
-            let mut conn = self.pool.get().await.unwrap();
-            let worker_info_key = Self::format_worker_info_key("*");
-            conn.keys::<_, Vec<String>>(&worker_info_key).await.unwrap()
-        };
-
-        let futs: Vec<_> = worker_ids
-            .iter()
-            .map(|worker_id| async move {
-                let mut conn = self.pool.get().await.unwrap();
-                let worker_hash: HashMap<String, String> = conn.hgetall(worker_id).await.unwrap();
-
-                WorkerState {
-                    name: worker_id.clone(),
-                    queues: worker_hash.get("queue").cloned(),
-                    last_seen_at: Some(Utc.timestamp_millis(
-                        str::parse::<i64>(&worker_hash["last_seen_at"]).unwrap(),
-                    )),
-                }
-            })
-            .collect();
-        future::join_all(futs).await
-    }
-
-    async fn list_queues(&self) -> Vec<QueueState> {
-        let queue_ids = {
-            let mut conn = self.pool.get().await.unwrap();
-            let queue_key = Self::format_queue_key("*");
-            conn.keys::<_, Vec<String>>(&queue_key).await.unwrap()
-        };
-
-        let futs: Vec<_> = queue_ids
-            .iter()
-            .map(|worker_id| async move {
-                let mut conn = self.pool.get().await.unwrap();
-                let queue_size = conn.llen(worker_id).await.unwrap();
-
-                QueueState {
-                    name: worker_id.clone(),
-                    size: queue_size,
-                }
-            })
-            .collect();
-        future::join_all(futs).await
-    }
-
     async fn heartbeat(&self, application_id: &str) {
         let mut conn = self.pool.get().await.unwrap();
         let worker_key = Self::format_worker_info_key(application_id);
@@ -139,5 +95,72 @@ impl Broker for RedisBroker {
     async fn deregister_worker(&self, application_id: &str) {
         let mut conn = self.pool.get().await.unwrap();
         conn.del::<_, ()>(application_id).await.unwrap();
+    }
+}
+
+#[async_trait]
+impl BrokerInfo for RedisBroker {
+    async fn workers(&self) -> Vec<WorkerInfo> {
+        let worker_ids = {
+            let mut conn = self.pool.get().await.unwrap();
+            let worker_info_key = Self::format_worker_info_key("*");
+            conn.keys::<_, Vec<String>>(&worker_info_key).await.unwrap()
+        };
+
+        let futs: Vec<_> = worker_ids
+            .iter()
+            .map(|worker_id| async move {
+                let mut conn = self.pool.get().await.unwrap();
+                let worker_hash: HashMap<String, String> = conn.hgetall(worker_id).await.unwrap();
+
+                WorkerInfo {
+                    name: worker_id.clone(),
+                    queue: worker_hash.get("queue").cloned(),
+                    last_seen_at: Some(Utc.timestamp_millis(
+                        str::parse::<i64>(&worker_hash["last_seen_at"]).unwrap(),
+                    )),
+                }
+            })
+            .collect();
+        future::join_all(futs).await
+    }
+
+    async fn queues(&self) -> Vec<QueueInfo> {
+        let queue_ids = {
+            let mut conn = self.pool.get().await.unwrap();
+            let queue_key = Self::format_queue_key("*");
+            conn.keys::<_, Vec<String>>(&queue_key).await.unwrap()
+        };
+
+        let futs: Vec<_> = queue_ids
+            .iter()
+            .map(|worker_id| async move {
+                let mut conn = self.pool.get().await.unwrap();
+                let queue_size = conn.llen(worker_id).await.unwrap();
+
+                QueueInfo {
+                    name: worker_id.clone(),
+                    size: queue_size,
+                }
+            })
+            .collect();
+        future::join_all(futs).await
+    }
+
+    async fn stats(&self) -> Stats {
+        Stats {
+            processed: 0,
+            failed: 0,
+            scheduled: 0,
+            enqueued: 0,
+        }
+    }
+
+    async fn deadlettered(&self) -> Vec<DeadletteredInfo> {
+        vec![]
+    }
+
+    async fn scheduled(&self) -> Vec<ScheduledInfo> {
+        vec![]
     }
 }
