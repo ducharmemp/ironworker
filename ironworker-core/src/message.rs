@@ -42,6 +42,8 @@ pub struct SerializableMessage {
     pub enqueued_at: DateTime<Utc>,
     pub err: Option<SerializableError>,
     pub retries: usize,
+    #[serde(default)]
+    pub delivery_tag: Option<String>,
 }
 
 impl SerializableMessage {
@@ -54,6 +56,7 @@ impl SerializableMessage {
             enqueued_at: Utc::now(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         }
     }
 }

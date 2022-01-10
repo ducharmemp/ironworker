@@ -1,0 +1,15 @@
+concurrency: 10
+
+queues:
+  default:
+    concurrency: 25
+  critical:
+    concurrency: 50
+  low:
+    concurrency: 5
+  fake:
+    concurrency: 10
+  complex:
+    concurrency: 10
+  async:
+    concurrency: 10

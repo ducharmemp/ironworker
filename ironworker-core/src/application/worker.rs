@@ -133,6 +133,11 @@ impl<B: Broker + Sync + Send + 'static> IronWorker<B> {
                     if let Err(e) = task_result {
                         error!(id=?self.id, "Task {} failed", message.job_id);
                         process_failed(message, e).await;
+                    } else {
+                        self.shared_data
+                            .broker
+                            .acknowledge_processed(self.queue, message)
+                            .await;
                     }
                 }
                 Err(e) => {
@@ -204,6 +209,7 @@ mod test {
             payload: 123.into(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         };
 
         let shared = Arc::new(SharedData {
@@ -243,6 +249,7 @@ mod test {
             payload: 123.into(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         };
 
         let shared = Arc::new(SharedData {
@@ -271,6 +278,7 @@ mod test {
             payload: 123.into(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         };
 
         let broker = InProcessBroker::default();
@@ -311,6 +319,7 @@ mod test {
             payload: 123.into(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         };
 
         let shared = Arc::new(SharedData {
@@ -345,6 +354,7 @@ mod test {
             payload: 123.into(),
             err: None,
             retries: 0,
+            delivery_tag: None,
         };
 
         let shared = Arc::new(SharedData {

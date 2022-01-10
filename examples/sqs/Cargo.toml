@@ -1,0 +1,21 @@
+[package]
+name = "sqs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+ironworker-sqs = { path = "../../ironworker-sqs" }
+ironworker-core = { path = "../../ironworker-core" }
+anyhow = "1"
+serde = "1"
+tracing-subscriber = "0.3"
+tracing = "0.1"
+thiserror = "1"
+async-trait = "0.1"
+aws-config = "0.4"
+aws-sdk-sqs = "0.4"
+http = "0.2"

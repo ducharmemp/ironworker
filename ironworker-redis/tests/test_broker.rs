@@ -19,6 +19,7 @@ async fn test_enqueue() {
                 enqueued_at: Utc::now(),
                 err: None,
                 retries: 0,
+                delivery_tag: None,
             },
         )
         .await;
@@ -36,6 +37,7 @@ async fn test_dequeue() {
         enqueued_at: Utc::now(),
         err: None,
         retries: 0,
+        delivery_tag: None,
     };
     broker.enqueue(queue, enqueued_message.clone()).await;
 
@@ -66,6 +68,7 @@ async fn test_deadletter() {
                 enqueued_at: Utc::now(),
                 err: None,
                 retries: 0,
+                delivery_tag: None,
             },
         )
         .await;
