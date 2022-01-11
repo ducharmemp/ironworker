@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::cargo, nonstandard_style, rust_2018_idioms)]
-#![forbid(non_ascii_idents, unsafe_code)]
+#![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
     deprecated_in_future,
     missing_copy_implementations,
@@ -11,7 +11,7 @@
     unused_labels,
     unused_lifetimes,
     unused_qualifications,
-    // unused_results
+    // unused_results,
 )]
 
 mod application;

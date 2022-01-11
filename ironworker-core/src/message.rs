@@ -25,11 +25,9 @@ pub struct SerializableError {
     message: String,
 }
 
-impl SerializableError {
-    pub fn from_tagged(err: TaggedError) -> Self {
-        Self {
-            message: format!("{:?}", err.wrapped),
-        }
+impl From<TaggedError> for SerializableError {
+    fn from(err: TaggedError) -> Self {
+        Self { message: err.repr }
     }
 }
 

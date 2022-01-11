@@ -1001,7 +1001,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "config",
- "deadpool",
  "futures",
  "serde 1.0.132",
  "serde_json",

@@ -1,9 +1,6 @@
-
-
 use async_trait::async_trait;
 use aws_config::Config;
 use aws_sdk_sqs::{config::Builder, Client};
-
 
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
