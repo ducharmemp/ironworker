@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use aws_config::Config;
-use aws_sdk_sqs::{config::Builder, Client};
+use aws_sdk_sqs::{config::Builder, Client, SdkError};
 
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
@@ -25,7 +25,9 @@ impl SqsBroker {
 
 #[async_trait]
 impl Broker for SqsBroker {
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) {
+    type Error = ();
+
+    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let queue = self
             .client
             .get_queue_url()
@@ -40,6 +42,7 @@ impl Broker for SqsBroker {
             .send()
             .await
             .unwrap();
+        Ok(())
     }
 
     async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
@@ -65,7 +68,11 @@ impl Broker for SqsBroker {
         Some(payload)
     }
 
-    async fn acknowledge_processed(&self, from: &str, message: SerializableMessage) {
+    async fn acknowledge_processed(
+        &self,
+        from: &str,
+        message: SerializableMessage,
+    ) -> Result<(), Self::Error> {
         dbg!(&message);
         let queue = self
             .client
@@ -81,5 +88,6 @@ impl Broker for SqsBroker {
             .send()
             .await
             .unwrap();
+        Ok(())
     }
 }

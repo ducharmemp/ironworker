@@ -13,17 +13,25 @@ pub struct InProcessBroker {
 
 #[async_trait]
 impl Broker for InProcessBroker {
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) {
+    type Error = ();
+
+    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let mut write_guard = self.queues.lock().await;
         let queue = write_guard.entry(queue.to_string()).or_default();
         queue.push_back(message);
+        Ok(())
     }
 
-    async fn deadletter(&self, queue: &str, message: SerializableMessage) {
+    async fn deadletter(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+    ) -> Result<(), Self::Error> {
         let mut write_guard = self.deadletter.lock().await;
         write_guard
             .entry(queue.to_string())
             .or_insert_with(|| message);
+        Ok(())
     }
 
     async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
@@ -31,7 +39,4 @@ impl Broker for InProcessBroker {
         let queue = write_guard.entry(from.to_string()).or_default();
         queue.pop_front()
     }
-
-    async fn heartbeat(&self, _application_id: &str) {}
-    async fn deregister_worker(&self, _application_id: &str) {}
 }

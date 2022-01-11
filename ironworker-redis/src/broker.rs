@@ -9,7 +9,7 @@ use ironworker_core::info::{
 };
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
-use redis::{pipe, AsyncCommands};
+use redis::{pipe, AsyncCommands, RedisError};
 
 use crate::message::RedisMessage;
 
@@ -51,21 +51,27 @@ impl RedisBroker {
 
 #[async_trait]
 impl Broker for RedisBroker {
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) {
+    type Error = RedisError;
+
+    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
-        conn.lpush::<_, _, ()>(&queue_key, message).await.unwrap();
+        conn.lpush::<_, _, ()>(&queue_key, message).await?;
+        Ok(())
     }
 
-    async fn deadletter(&self, queue: &str, message: SerializableMessage) {
+    async fn deadletter(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+    ) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
         let deadletter_key = Self::format_deadletter_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&deadletter_key, message)
-            .await
-            .unwrap();
+        conn.lpush::<_, _, ()>(&deadletter_key, message).await?;
+        Ok(())
     }
 
     async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
@@ -79,7 +85,7 @@ impl Broker for RedisBroker {
         Some(item.into())
     }
 
-    async fn heartbeat(&self, application_id: &str) {
+    async fn heartbeat(&self, application_id: &str) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
         let worker_key = Self::format_worker_info_key(application_id);
 
@@ -88,13 +94,14 @@ impl Broker for RedisBroker {
             .hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis())
             .expire(&worker_key, 60)
             .query_async::<_, ()>(&mut *conn)
-            .await
-            .unwrap();
+            .await?;
+        Ok(())
     }
 
-    async fn deregister_worker(&self, application_id: &str) {
+    async fn deregister_worker(&self, application_id: &str) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
-        conn.del::<_, ()>(application_id).await.unwrap();
+        conn.del::<_, ()>(application_id).await?;
+        Ok(())
     }
 }
 

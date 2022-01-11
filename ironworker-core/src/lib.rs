@@ -24,7 +24,7 @@ mod middleware;
 mod task;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
-pub use broker::Broker;
+pub use broker::{Broker, BrokerConfig, HeartbeatStrategy, InProcessBroker, RetryStrategy};
 pub use error::{IronworkerError, IronworkerResult};
 pub use message::{Message, SerializableMessage};
 pub use middleware::IronworkerMiddleware;

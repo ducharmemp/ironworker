@@ -10,7 +10,7 @@ use ironworker_core::{
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use snafu::Snafu;
 
 struct Middleware;
 
@@ -61,9 +61,9 @@ fn my_panicking_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Err(TestEnum::Failed)
 }
 
-#[derive(Error, Debug)]
+#[derive(Snafu, Debug)]
 enum TestEnum {
-    #[error("The task failed")]
+    #[snafu(display("The task failed"))]
     Failed,
 }
 
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await;
 
-    for _ in 0..2 {
+    for _ in 0..50000 {
         my_panicking_task.task().perform_later(&app, 123).await;
         my_task.task().perform_later(&app, 123).await;
         my_async_task.task().perform_later(&app, 123).await;

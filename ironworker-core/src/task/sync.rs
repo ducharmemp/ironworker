@@ -268,7 +268,7 @@ mod test {
             .broker(InProcessBroker::default())
             .register_task(some_task.task())
             .build();
-        some_task.task().perform_later(&app, 123).await;
+        some_task.task().perform_later(&app, 123).await.unwrap();
         assert_eq!(
             app.shared_data.broker.queues.lock().await["default"].len(),
             1

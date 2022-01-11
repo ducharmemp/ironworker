@@ -1,10 +1,10 @@
-use thiserror::Error;
+use snafu::Snafu;
 
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Snafu, Debug, Copy, Clone)]
 pub enum IronworkerError {
-    #[error("Could not enqueue a task")]
+    #[snafu(display("Could not enqueue a task"))]
     CouldNotEnqueue,
-    #[error("Could not dequeue a task")]
+    #[snafu(display("Could not dequeue a task"))]
     CouldNotDequeue,
 }
 

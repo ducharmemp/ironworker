@@ -238,15 +238,45 @@ mod test {
     use std::{collections::HashMap, error::Error};
 
     use chrono::Utc;
-    use thiserror::Error;
+    use snafu::Snafu;
     use tokio::time::{self, sleep};
 
-    use crate::{broker::InProcessBroker, IntoTask, Message, Task};
+    use crate::{broker::InProcessBroker, ConfigurableTask, IntoTask, Message, Task};
 
     use super::*;
 
     fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
         Box::new(t)
+    }
+
+    fn default_message(task: Box<dyn Task>) -> SerializableMessage {
+        SerializableMessage {
+            enqueued_at: Utc::now(),
+            queue: "default".to_string(),
+            job_id: "test-id".to_string(),
+            task: task.name().to_string(),
+            payload: 123.into(),
+            err: None,
+            retries: 0,
+            delivery_tag: None,
+        }
+    }
+
+    async fn crank_until<B: Broker>(
+        mut worker: WorkerStateMachine<B>,
+        wait_for: WorkerState,
+    ) -> WorkerStateMachine<B> {
+        while worker.state != wait_for {
+            let event = worker.step().await;
+            worker.state = worker.state.next(event);
+        }
+        worker
+    }
+
+    #[derive(Snafu, Debug)]
+    enum TestEnum {
+        #[snafu(display("The task failed"))]
+        Failed,
     }
 
     #[tokio::test]
@@ -258,16 +288,7 @@ mod test {
 
         time::pause();
 
-        let message = SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: long_running.task().name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        };
+        let message = default_message(boxed_task(long_running.task()));
 
         let shared = Arc::new(SharedData {
             broker: InProcessBroker::default(),
@@ -281,7 +302,7 @@ mod test {
 
         let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
         worker.state = WorkerState::Execute(message);
-        let _event = worker.step().await;
+        crank_until(worker, WorkerState::WaitForTask).await;
         time::advance(Duration::from_secs(45)).await;
 
         assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
@@ -289,26 +310,11 @@ mod test {
 
     #[tokio::test]
     async fn erroring_task_deadletters() {
-        #[derive(Error, Debug)]
-        enum TestEnum {
-            #[error("The task failed")]
-            Failed,
-        }
-
         async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
             Err(TestEnum::Failed)
         }
 
-        let message = SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: erroring.task().name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        };
+        let message = default_message(boxed_task(erroring.task()));
 
         let shared = Arc::new(SharedData {
             broker: InProcessBroker::default(),
@@ -319,7 +325,7 @@ mod test {
 
         let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
         worker.state = WorkerState::Execute(message);
-        worker.step().await;
+        crank_until(worker, WorkerState::WaitForTask).await;
         assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
 
@@ -329,16 +335,7 @@ mod test {
             Ok(())
         }
 
-        let message = SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: successful.task().name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        };
+        let message = default_message(boxed_task(successful.task()));
 
         let broker = InProcessBroker::default();
 
@@ -356,81 +353,57 @@ mod test {
             }),
         );
         worker.state = WorkerState::Execute(message);
-        let _event = worker.step().await;
+        crank_until(worker, WorkerState::WaitForTask).await;
         // assert_eq!(event, WorkerEvent::ExecuteCompleted);
     }
 
     #[tokio::test]
     async fn retryable_task_gets_reenqueued() {
-        #[derive(Error, Debug)]
-        enum TestEnum {
-            #[error("The task failed")]
-            Failed,
-        }
-
         async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
             Err(TestEnum::Failed)
         }
 
-        let message = SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: erroring.task().name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        };
+        let message = default_message(boxed_task(erroring.task()));
 
         let shared = Arc::new(SharedData {
             broker: InProcessBroker::default(),
             middleware: Default::default(),
-            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
+            tasks: HashMap::from_iter([(
+                erroring.task().name(),
+                boxed_task(erroring.task().retries(5)),
+            )]),
             state: Default::default(),
         });
 
         let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
         worker.state = WorkerState::Execute(message);
-        worker.step().await;
+        crank_until(worker, WorkerState::WaitForTask).await;
         assert_eq!(shared.broker.queues.lock().await["default"].len(), 1);
     }
 
     #[tokio::test]
     async fn retryable_task_on_max_retries_gets_deadlettered() {
-        #[derive(Error, Debug)]
-        enum TestEnum {
-            #[error("The task failed")]
-            Failed,
-        }
-
         async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
             Err(TestEnum::Failed)
         }
 
-        let message = SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: erroring.task().name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        };
+        let message = default_message(boxed_task(erroring.task()));
 
         let shared = Arc::new(SharedData {
             broker: InProcessBroker::default(),
             middleware: Default::default(),
-            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
+            tasks: HashMap::from_iter([(
+                erroring.task().name(),
+                boxed_task(erroring.task().retries(1)),
+            )]),
             state: Default::default(),
         });
 
         let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
         worker.state = WorkerState::Execute(message);
-        worker.step().await;
+        let mut worker = crank_until(worker, WorkerState::WaitForTask).await;
         worker.state = WorkerState::Execute(shared.broker.dequeue("default").await.unwrap());
-        worker.step().await;
+        crank_until(worker, WorkerState::WaitForTask).await;
         assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
 }

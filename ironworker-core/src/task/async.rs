@@ -81,7 +81,7 @@ where
         _app: &IronworkerApplication<B>,
         _payload: T,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // Need to fix this up, we need to have this go to a regular ol queue
+        // TODO: Need to fix this up, we need to have this go to a regular ol queue
         todo!();
     }
 }
@@ -277,7 +277,7 @@ mod test {
             .broker(InProcessBroker::default())
             .register_task(some_task.task())
             .build();
-        some_task.task().perform_later(&app, 123).await;
+        some_task.task().perform_later(&app, 123).await.unwrap();
         assert_eq!(
             app.shared_data.broker.queues.lock().await["default"].len(),
             1

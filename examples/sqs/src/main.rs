@@ -11,7 +11,7 @@ use ironworker_core::{
 };
 use ironworker_sqs::SqsBroker;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use snafu::Snafu;
 
 struct Middleware;
 
@@ -62,9 +62,9 @@ fn my_panicking_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Err(TestEnum::Failed)
 }
 
-#[derive(Error, Debug)]
+#[derive(Snafu, Debug)]
 enum TestEnum {
-    #[error("The task failed")]
+    #[snafu(display("The task failed"))]
     Failed,
 }
 

@@ -13,7 +13,7 @@ categories = ["web-programming:async-job", "web-programming:job-queue"]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-thiserror = "1"
+snafu = "0.7"
 ironworker-core = { path = "../ironworker-core" }
 async-trait = "0.1"
 serde = "1"

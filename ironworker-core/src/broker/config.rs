@@ -1,3 +1,4 @@
+#[derive(Clone, Copy)]
 pub enum RetryStrategy {
     Manual,
     Automatic,
@@ -19,6 +20,7 @@ impl RetryStrategy {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum HeartbeatStrategy {
     NoHeartbeat,
     Periodic,
@@ -40,6 +42,7 @@ impl HeartbeatStrategy {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct BrokerConfig {
     pub retry_strategy: RetryStrategy,
     pub heartbeat_strategy: HeartbeatStrategy,

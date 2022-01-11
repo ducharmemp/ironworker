@@ -14,7 +14,7 @@ use tokio::sync::Notify;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
-use crate::{Broker, Message, SerializableMessage};
+use crate::{Broker, IronworkerError, Message, SerializableMessage};
 pub use builder::IronworkerApplicationBuilder;
 use shared::SharedData;
 use worker::IronWorkerPool;
@@ -43,7 +43,11 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         self.notify_shutdown.notify_one()
     }
 
-    pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(&self, task: &str, payload: P) {
+    pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(
+        &self,
+        task: &str,
+        payload: P,
+    ) -> Result<(), IronworkerError> {
         let message: Message<P> = payload.into();
         let handler = self.shared_data.tasks.get(task).unwrap();
         let handler_config = handler.config();
@@ -54,7 +58,9 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         self.shared_data
             .broker
             .enqueue(handler_config.queue, serializable)
-            .await;
+            .await
+            .map_err(|_| IronworkerError::CouldNotEnqueue)?;
+        Ok(())
     }
 
     pub async fn run(&self) {
