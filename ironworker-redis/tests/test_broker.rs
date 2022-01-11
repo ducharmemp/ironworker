@@ -22,7 +22,7 @@ async fn test_enqueue() {
                 delivery_tag: None,
             },
         )
-        .await;
+        .await.unwrap();
 }
 
 #[tokio::test]
@@ -39,7 +39,7 @@ async fn test_dequeue() {
         retries: 0,
         delivery_tag: None,
     };
-    broker.enqueue(queue, enqueued_message.clone()).await;
+    broker.enqueue(queue, enqueued_message.clone()).await.unwrap();
 
     let message = broker.dequeue(queue).await;
     assert_eq!(enqueued_message, message.unwrap());
@@ -71,5 +71,5 @@ async fn test_deadletter() {
                 delivery_tag: None,
             },
         )
-        .await;
+        .await.unwrap();
 }

@@ -406,4 +406,25 @@ mod test {
         crank_until(worker, WorkerState::WaitForTask).await;
         assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
     }
+
+    #[tokio::test]
+    async fn state_machine_flow() {
+        struct StateTest { from: WorkerState, to: WorkerState, event: WorkerEvent }
+        
+        async fn task(_message: Message<u32>) -> Result<(), TestEnum> {
+            Ok(())
+        }
+
+        let transitions = vec![
+            StateTest { from: WorkerState::Initialize, to: WorkerState::WaitForTask, event: WorkerEvent::Initialized },
+            StateTest { from: WorkerState::WaitForTask, to: WorkerState::PreExecute(default_message(boxed_task(task.task()))), event: WorkerEvent::TaskReceived(default_message(boxed_task(task.task()))) },
+            StateTest { from: WorkerState::WaitForTask, to: WorkerState::HeartBeat, event: WorkerEvent::ShouldTryHeartbeat },
+            StateTest { from: WorkerState::HeartBeat, to: WorkerState::WaitForTask, event: WorkerEvent::HeartBeatCompleted },
+            StateTest { from: WorkerState::PreExecute(default_message(boxed_task(task.task()))), to: WorkerState::Execute(default_message(boxed_task(task.task()))), event: WorkerEvent::PreExecuteCompleted}
+        ];
+
+        for StateTest { from, to, event } in transitions.into_iter() {
+            // assert_eq!(from.next(event), to);
+        }
+    }
 }

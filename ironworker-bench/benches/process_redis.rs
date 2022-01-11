@@ -33,14 +33,14 @@ fn from_elem(c: &mut Criterion) {
         // Insert a call to `to_async` to convert the bencher to async mode.
         // The timing loops are the same as with the normal bencher.
         b.to_async(&rt).iter(|| async {
-            bench_task.task().perform_later(&app, s).await;
+            bench_task.task().perform_later(&app, s).await.unwrap();
         });
     });
 
     c.bench_function("dequeue", |b| {
         rt.block_on(async {
             for val in 0..10_000 {
-                bench_task.task().perform_later(&app, val).await;
+                bench_task.task().perform_later(&app, val).await.unwrap();
             }
         });
 

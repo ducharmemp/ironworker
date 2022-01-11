@@ -88,11 +88,11 @@ async fn main() -> Result<()> {
         .build();
 
     // my_task.task().perform_now(&app, 123).await.unwrap();
-    my_task.task().perform_later(&app, 123).await;
+    my_task.task().perform_later(&app, 123).await?;
     my_complex_task
         .task()
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
-        .await;
+        .await?;
 
     my_complex_task
         .task()
@@ -101,12 +101,12 @@ async fn main() -> Result<()> {
             ErrorRetryConfiguration::default().with_attempts(5),
         )
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
-        .await;
+        .await?;
 
     for _ in 0..2 {
-        my_panicking_task.task().perform_later(&app, 123).await;
-        my_task.task().perform_later(&app, 123).await;
-        my_async_task.task().perform_later(&app, 123).await;
+        my_panicking_task.task().perform_later(&app, 123).await?;
+        my_task.task().perform_later(&app, 123).await?;
+        my_async_task.task().perform_later(&app, 123).await?;
     }
 
     app.run().await;
