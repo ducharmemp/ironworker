@@ -22,6 +22,7 @@ pub enum WorkerState {
     ExecuteFailed(SerializableMessage, TaggedError),
     RetryTask(&'static str, SerializableMessage),
     DeadletterTask(&'static str, SerializableMessage),
+    PostFailure(SerializableMessage),
     Shutdown,
 }
 
@@ -41,32 +42,48 @@ pub enum WorkerEvent {
     PostExecuteCompleted,
     RetryCompleted,
     DeadletterCompleted,
+    PostFailureCompleted,
     Shutdown,
 }
 
 impl WorkerState {
     fn next(self, event: WorkerEvent) -> Self {
         match (self, event) {
+            // Go back to waiting
             (Self::Initialize, WorkerEvent::Initialized) => Self::WaitForTask,
-            (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(message),
             (Self::WaitForTask, WorkerEvent::NoTaskReceived) => Self::WaitForTask,
-            (Self::WaitForTask, WorkerEvent::ShouldTryHeartbeat) => Self::HeartBeat,
             (Self::HeartBeat, WorkerEvent::HeartBeatCompleted) => Self::WaitForTask,
+
+            // Let the broker know we're alive
+            (Self::WaitForTask, WorkerEvent::ShouldTryHeartbeat) => Self::HeartBeat,
+
+            // Pre task execution
+            (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(message),
             (Self::PreExecute(message), WorkerEvent::PreExecuteCompleted) => Self::Execute(message),
+
+            // Task execution
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
             (Self::Execute(message), WorkerEvent::ExecuteFailed(error)) => {
                 Self::ExecuteFailed(message, error)
             }
-            // (Self::ExecuteFailed())
-            (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted)
-            | (Self::RetryTask(_, _), WorkerEvent::RetryCompleted)
-            | (Self::DeadletterTask(_, _), WorkerEvent::DeadletterCompleted) => Self::WaitForTask,
+
+            // Post execution
+            (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted) => Self::WaitForTask,
+
+            // Task Failure
+            (Self::PostFailure(_), WorkerEvent::PostFailureCompleted) => Self::WaitForTask,
+            (Self::RetryTask(_, message), WorkerEvent::RetryCompleted)
+            | (Self::DeadletterTask(_, message), WorkerEvent::DeadletterCompleted) => {
+                Self::PostFailure(message)
+            }
             (Self::ExecuteFailed(_, _), WorkerEvent::ShouldRetry(queue, message)) => {
                 Self::RetryTask(queue, message)
             }
             (Self::ExecuteFailed(_, _), WorkerEvent::ShouldDeadletter(queue, message)) => {
                 Self::DeadletterTask(queue, message)
             }
+
+            // Worker told to stop
             (_, WorkerEvent::Shutdown) => Self::Shutdown,
             _ => unimplemented!(),
         }
@@ -99,120 +116,144 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
+    async fn wait_for_task(&mut self) -> WorkerEvent {
+        select!(
+            _ = self.heartbeat_interval.tick() => {
+                WorkerEvent::ShouldTryHeartbeat
+            },
+            message = self.shared_data.broker.dequeue(self.queue) => {
+                if let Some(message) = message {
+                    debug!(id=?self.id, "Received job {}", message.job_id);
+                    WorkerEvent::TaskReceived(message)
+                } else {
+                    debug!(id=?self.id, "No job received, polling again");
+                    WorkerEvent::NoTaskReceived
+                }
+            }
+        )
+    }
+
+    async fn pre_execute(&self, message: &SerializableMessage) -> WorkerEvent {
+        if !self.shared_data.tasks.contains_key(&message.task.as_str()) {
+            return WorkerEvent::PreExecuteFailed;
+        }
+        debug!(id=?self.id, "Running pre-execution hooks");
+        for middleware in self.shared_data.middleware.iter() {
+            middleware.on_task_start().await;
+        }
+        WorkerEvent::PreExecuteCompleted
+    }
+
+    async fn execute(&self, message: &SerializableMessage) -> WorkerEvent {
+        let handler = self.shared_data.tasks.get(&message.task.as_str());
+        let handler = handler.unwrap();
+        let task_future = timeout(
+            Duration::from_secs(30),
+            handler.perform(message.clone(), &self.shared_data.state),
+        );
+
+        match task_future.await {
+            Ok(task_result) => {
+                if let Err(e) = task_result {
+                    WorkerEvent::ExecuteFailed(e)
+                } else {
+                    WorkerEvent::ExecuteCompleted
+                }
+            }
+            Err(e) => WorkerEvent::ExecuteFailed(e.into()),
+        }
+    }
+
+    async fn post_execute(&self, message: &SerializableMessage) -> WorkerEvent {
+        debug!(id=?self.id, "Running post-execution hooks");
+        for middleware in self.shared_data.middleware.iter() {
+            middleware.on_task_completion().await;
+        }
+        self.shared_data
+            .broker
+            .acknowledge_processed(self.queue, message.clone())
+            .await;
+        WorkerEvent::PostExecuteCompleted
+    }
+
+    async fn execute_failed(
+        &self,
+        message: &SerializableMessage,
+        error: &TaggedError,
+    ) -> WorkerEvent {
+        error!(id=?self.id, "Task {} failed", message.job_id);
+        let mut message = message.clone();
+        let handler = self.shared_data.tasks.get(&message.task.as_str());
+        let handler = handler.unwrap();
+        let handler_config = handler.config();
+        let retry_on_config = handler_config
+            .retry_on
+            .get(&error.type_id)
+            .cloned()
+            .unwrap_or_default();
+        let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
+        let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
+        let should_discard = handler_config.discard_on.contains(&error.type_id);
+
+        // message.err = Some(error.into());
+        if message.retries < retries && !should_discard {
+            message.retries += 1;
+            WorkerEvent::ShouldRetry(queue, message)
+        } else if !should_discard {
+            WorkerEvent::ShouldDeadletter(queue, message)
+        } else {
+            WorkerEvent::PostExecuteCompleted
+        }
+    }
+
+    async fn post_failure(&self, message: &SerializableMessage) -> WorkerEvent {
+        debug!(id=?self.id, "Running failed hooks");
+        for middleware in self.shared_data.middleware.iter() {
+            middleware.on_task_failure().await;
+        }
+        WorkerEvent::PostFailureCompleted
+    }
+
+    async fn retry_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
+        self.shared_data
+            .broker
+            .enqueue(queue, message.clone())
+            .await;
+        WorkerEvent::RetryCompleted
+    }
+
+    async fn deadletter_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
+        // TODO: Remove these clones
+        self.shared_data
+            .broker
+            .deadletter(queue, message.clone())
+            .await;
+        WorkerEvent::DeadletterCompleted
+    }
+
     async fn step(&mut self) -> WorkerEvent {
         match &self.state {
             WorkerState::Initialize => {
                 self.shared_data.broker.heartbeat(&self.id).await;
                 WorkerEvent::Initialized
             }
-            WorkerState::WaitForTask => {
-                select!(
-                    _ = self.heartbeat_interval.tick() => {
-                        WorkerEvent::ShouldTryHeartbeat
-                    },
-                    message = self.shared_data.broker.dequeue(self.queue) => {
-                        if let Some(message) = message {
-                            debug!(id=?self.id, "Received job {}", message.job_id);
-                            WorkerEvent::TaskReceived(message)
-                        } else {
-                            debug!(id=?self.id, "No job received, polling again");
-                            WorkerEvent::NoTaskReceived
-                        }
-                    }
-                )
-            }
+            WorkerState::WaitForTask => self.wait_for_task().await,
             WorkerState::HeartBeat => {
                 debug!(id=?self.id, "Emitting heartbeat");
                 self.shared_data.broker.heartbeat(&self.id).await;
                 WorkerEvent::HeartBeatCompleted
             }
-            WorkerState::PreExecute(message) => {
-                if !self.shared_data.tasks.contains_key(&message.task.as_str()) {
-                    return WorkerEvent::PreExecuteFailed;
-                }
-                debug!(id=?self.id, "Running pre-execution hooks");
-                for middleware in self.shared_data.middleware.iter() {
-                    middleware.on_task_start().await;
-                }
-                WorkerEvent::PreExecuteCompleted
-            }
-            WorkerState::Execute(message) => {
-                let handler = self.shared_data.tasks.get(&message.task.as_str());
-                let handler = handler.unwrap();
-                let task_future = timeout(
-                    Duration::from_secs(30),
-                    handler.perform(message.clone(), &self.shared_data.state),
-                );
-
-                match task_future.await {
-                    Ok(task_result) => {
-                        if let Err(e) = task_result {
-                            WorkerEvent::ExecuteFailed(e)
-                        } else {
-                            WorkerEvent::ExecuteCompleted
-                        }
-                    }
-                    Err(e) => WorkerEvent::ExecuteFailed(e.into()),
-                }
-            }
-            WorkerState::PostExecute(message) => {
-                debug!(id=?self.id, "Running post-execution hooks");
-                for middleware in self.shared_data.middleware.iter() {
-                    middleware.on_task_completion().await;
-                }
-                self.shared_data
-                    .broker
-                    .acknowledge_processed(self.queue, message.clone())
-                    .await;
-                WorkerEvent::PostExecuteCompleted
-            }
-            WorkerState::ExecuteFailed(message, error) => {
-                error!(id=?self.id, "Task {} failed", message.job_id);
-                let mut message = message.clone();
-                let handler = self.shared_data.tasks.get(&message.task.as_str());
-                let handler = handler.unwrap();
-                let handler_config = handler.config();
-                let retry_on_config = handler_config
-                    .retry_on
-                    .get(&error.type_id)
-                    .cloned()
-                    .unwrap_or_default();
-                let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
-                let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
-                let should_discard = handler_config.discard_on.contains(&error.type_id);
-
-                debug!(id=?self.id, "Running failed hooks");
-                for middleware in self.shared_data.middleware.iter() {
-                    middleware.on_task_failure().await;
-                }
-
-                // message.err = Some(error.into());
-                if message.retries < retries && !should_discard {
-                    message.retries += 1;
-                    WorkerEvent::ShouldRetry(queue, message)
-                } else if !should_discard {
-                    WorkerEvent::ShouldDeadletter(queue, message)
-                } else {
-                    WorkerEvent::PostExecuteCompleted
-                }
-            }
-            WorkerState::RetryTask(queue, message) => {
-                self.shared_data
-                    .broker
-                    .enqueue(queue, message.clone())
-                    .await;
-                WorkerEvent::RetryCompleted
-            }
+            WorkerState::PreExecute(message) => self.pre_execute(message).await,
+            WorkerState::Execute(message) => self.execute(message).await,
+            WorkerState::PostExecute(message) => self.post_execute(message).await,
+            WorkerState::ExecuteFailed(message, error) => self.execute_failed(message, error).await,
+            WorkerState::RetryTask(queue, message) => self.retry_task(queue, message).await,
             WorkerState::DeadletterTask(queue, message) => {
-                // TODO: Remove these clones
-                self.shared_data
-                    .broker
-                    .deadletter(queue, message.clone())
-                    .await;
-                WorkerEvent::DeadletterCompleted
+                self.deadletter_task(queue, message).await
             }
+            WorkerState::PostFailure(message) => self.post_failure(message).await,
             WorkerState::Shutdown => {
-                // For completeness, if we're shut down we should just shut downs
+                // For completeness, if we're shut down we should just shut down
                 WorkerEvent::Shutdown
             }
         }
@@ -280,131 +321,31 @@ mod test {
     }
 
     #[tokio::test]
-    async fn long_running_task_times_out() {
-        async fn long_running(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-            sleep(Duration::from_secs(60)).await;
+    async fn wait_for_task_dequeues_a_message() {
+        async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
         time::pause();
 
-        let message = default_message(boxed_task(long_running.task()));
-
-        let shared = Arc::new(SharedData {
-            broker: InProcessBroker::default(),
-            middleware: Default::default(),
-            tasks: HashMap::from_iter([(
-                long_running.task().name(),
-                boxed_task(long_running.task()),
-            )]),
-            state: Default::default(),
-        });
-
-        let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
-        worker.state = WorkerState::Execute(message);
-        crank_until(worker, WorkerState::WaitForTask).await;
-        time::advance(Duration::from_secs(45)).await;
-
-        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn erroring_task_deadletters() {
-        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
-            Err(TestEnum::Failed)
-        }
-
-        let message = default_message(boxed_task(erroring.task()));
-
-        let shared = Arc::new(SharedData {
-            broker: InProcessBroker::default(),
-            middleware: Default::default(),
-            tasks: HashMap::from_iter([(erroring.task().name(), boxed_task(erroring.task()))]),
-            state: Default::default(),
-        });
-
-        let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
-        worker.state = WorkerState::Execute(message);
-        crank_until(worker, WorkerState::WaitForTask).await;
-        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn successful_task_marked_done() {
-        async fn successful(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
-            Ok(())
-        }
-
         let message = default_message(boxed_task(successful.task()));
 
-        let broker = InProcessBroker::default();
-
-        let mut worker = WorkerStateMachine::new(
-            "test".to_string(),
-            "default",
-            Arc::new(SharedData {
-                broker,
-                middleware: Default::default(),
-                tasks: HashMap::from_iter([(
-                    successful.task().name(),
-                    boxed_task(successful.task()),
-                )]),
-                state: Default::default(),
-            }),
-        );
-        worker.state = WorkerState::Execute(message);
-        crank_until(worker, WorkerState::WaitForTask).await;
-        // assert_eq!(event, WorkerEvent::ExecuteCompleted);
-    }
-
-    #[tokio::test]
-    async fn retryable_task_gets_reenqueued() {
-        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
-            Err(TestEnum::Failed)
-        }
-
-        let message = default_message(boxed_task(erroring.task()));
-
         let shared = Arc::new(SharedData {
             broker: InProcessBroker::default(),
             middleware: Default::default(),
-            tasks: HashMap::from_iter([(
-                erroring.task().name(),
-                boxed_task(erroring.task().retries(5)),
-            )]),
+            tasks: HashMap::from_iter([(successful.task().name(), boxed_task(successful.task()))]),
             state: Default::default(),
         });
 
-        let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
-        worker.state = WorkerState::Execute(message);
-        crank_until(worker, WorkerState::WaitForTask).await;
-        assert_eq!(shared.broker.queues.lock().await["default"].len(), 1);
-    }
+        shared
+            .broker
+            .enqueue("default", message.clone())
+            .await
+            .unwrap();
 
-    #[tokio::test]
-    async fn retryable_task_on_max_retries_gets_deadlettered() {
-        async fn erroring(_message: Message<u32>) -> Result<(), TestEnum> {
-            Err(TestEnum::Failed)
-        }
-
-        let message = default_message(boxed_task(erroring.task()));
-
-        let shared = Arc::new(SharedData {
-            broker: InProcessBroker::default(),
-            middleware: Default::default(),
-            tasks: HashMap::from_iter([(
-                erroring.task().name(),
-                boxed_task(erroring.task().retries(1)),
-            )]),
-            state: Default::default(),
-        });
-
-        let mut worker = WorkerStateMachine::new("test".to_string(), "default", shared.clone());
-        worker.state = WorkerState::Execute(message);
-        let mut worker = crank_until(worker, WorkerState::WaitForTask).await;
-        worker.state = WorkerState::Execute(shared.broker.dequeue("default").await.unwrap());
-        crank_until(worker, WorkerState::WaitForTask).await;
-        assert_eq!(shared.broker.deadletter.lock().await.keys().len(), 1);
+        let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
+        let event = worker.wait_for_task().await;
+        // assert_eq!(event, WorkerEvent::TaskReceived(message));
     }
 
     #[tokio::test]
@@ -471,7 +412,7 @@ mod test {
             },
             StateTest {
                 from: WorkerState::RetryTask("default", default_message(boxed_task(task.task()))),
-                to: WorkerState::WaitForTask,
+                to: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
                 event: WorkerEvent::RetryCompleted,
             },
             StateTest {
@@ -479,7 +420,7 @@ mod test {
                     "default",
                     default_message(boxed_task(task.task())),
                 ),
-                to: WorkerState::WaitForTask,
+                to: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
                 event: WorkerEvent::DeadletterCompleted,
             },
             StateTest {
@@ -506,6 +447,11 @@ mod test {
                     "default",
                     default_message(boxed_task(task.task())),
                 ),
+            },
+            StateTest {
+                from: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::PostFailureCompleted,
             },
             StateTest {
                 from: WorkerState::WaitForTask,
