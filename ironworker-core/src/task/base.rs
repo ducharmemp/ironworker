@@ -5,10 +5,10 @@ use async_trait::async_trait;
 use serde::Serialize;
 use state::Container;
 
-use crate::IronworkerError;
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
 use crate::message::{Message, SerializableMessage};
+use crate::IronworkerError;
 
 use super::config::Config;
 use super::error::{ErrorRetryConfiguration, TaggedError};
@@ -33,7 +33,11 @@ pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Tas
         payload: T,
     ) -> Result<(), Box<dyn Error + Send>>;
 
-    async fn perform_later<B: Broker + 'static>(&self, app: &IronworkerApplication<B>, payload: T) -> Result<(), IronworkerError> {
+    async fn perform_later<B: Broker + 'static>(
+        &self,
+        app: &IronworkerApplication<B>,
+        payload: T,
+    ) -> Result<(), IronworkerError> {
         app.enqueue(self.name(), payload).await
     }
 }

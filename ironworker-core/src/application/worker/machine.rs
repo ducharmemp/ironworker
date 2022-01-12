@@ -409,18 +409,109 @@ mod test {
 
     #[tokio::test]
     async fn state_machine_flow() {
-        struct StateTest { from: WorkerState, to: WorkerState, event: WorkerEvent }
-        
+        struct StateTest {
+            from: WorkerState,
+            to: WorkerState,
+            event: WorkerEvent,
+        }
+
         async fn task(_message: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
+        // More of a sanity check so we don't accidentally nuke a state transition
         let transitions = vec![
-            StateTest { from: WorkerState::Initialize, to: WorkerState::WaitForTask, event: WorkerEvent::Initialized },
-            StateTest { from: WorkerState::WaitForTask, to: WorkerState::PreExecute(default_message(boxed_task(task.task()))), event: WorkerEvent::TaskReceived(default_message(boxed_task(task.task()))) },
-            StateTest { from: WorkerState::WaitForTask, to: WorkerState::HeartBeat, event: WorkerEvent::ShouldTryHeartbeat },
-            StateTest { from: WorkerState::HeartBeat, to: WorkerState::WaitForTask, event: WorkerEvent::HeartBeatCompleted },
-            StateTest { from: WorkerState::PreExecute(default_message(boxed_task(task.task()))), to: WorkerState::Execute(default_message(boxed_task(task.task()))), event: WorkerEvent::PreExecuteCompleted}
+            StateTest {
+                from: WorkerState::Initialize,
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::Initialized,
+            },
+            StateTest {
+                from: WorkerState::WaitForTask,
+                to: WorkerState::PreExecute(default_message(boxed_task(task.task()))),
+                event: WorkerEvent::TaskReceived(default_message(boxed_task(task.task()))),
+            },
+            StateTest {
+                from: WorkerState::WaitForTask,
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::NoTaskReceived,
+            },
+            StateTest {
+                from: WorkerState::WaitForTask,
+                to: WorkerState::HeartBeat,
+                event: WorkerEvent::ShouldTryHeartbeat,
+            },
+            StateTest {
+                from: WorkerState::HeartBeat,
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::HeartBeatCompleted,
+            },
+            StateTest {
+                from: WorkerState::PreExecute(default_message(boxed_task(task.task()))),
+                to: WorkerState::Execute(default_message(boxed_task(task.task()))),
+                event: WorkerEvent::PreExecuteCompleted,
+            },
+            StateTest {
+                from: WorkerState::Execute(default_message(boxed_task(task.task()))),
+                to: WorkerState::PostExecute(default_message(boxed_task(task.task()))),
+                event: WorkerEvent::ExecuteCompleted,
+            },
+            StateTest {
+                from: WorkerState::Execute(default_message(boxed_task(task.task()))),
+                to: WorkerState::ExecuteFailed(
+                    default_message(boxed_task(task.task())),
+                    TestEnum::Failed.into(),
+                ),
+                event: WorkerEvent::ExecuteFailed(TestEnum::Failed.into()),
+            },
+            StateTest {
+                from: WorkerState::PostExecute(default_message(boxed_task(task.task()))),
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::PostExecuteCompleted,
+            },
+            StateTest {
+                from: WorkerState::RetryTask("default", default_message(boxed_task(task.task()))),
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::RetryCompleted,
+            },
+            StateTest {
+                from: WorkerState::DeadletterTask(
+                    "default",
+                    default_message(boxed_task(task.task())),
+                ),
+                to: WorkerState::WaitForTask,
+                event: WorkerEvent::DeadletterCompleted,
+            },
+            StateTest {
+                from: WorkerState::ExecuteFailed(
+                    default_message(boxed_task(task.task())),
+                    TestEnum::Failed.into(),
+                ),
+                to: WorkerState::RetryTask("default", default_message(boxed_task(task.task()))),
+                event: WorkerEvent::ShouldRetry(
+                    "default",
+                    default_message(boxed_task(task.task())),
+                ),
+            },
+            StateTest {
+                from: WorkerState::ExecuteFailed(
+                    default_message(boxed_task(task.task())),
+                    TestEnum::Failed.into(),
+                ),
+                to: WorkerState::DeadletterTask(
+                    "default",
+                    default_message(boxed_task(task.task())),
+                ),
+                event: WorkerEvent::ShouldDeadletter(
+                    "default",
+                    default_message(boxed_task(task.task())),
+                ),
+            },
+            StateTest {
+                from: WorkerState::WaitForTask,
+                to: WorkerState::Shutdown,
+                event: WorkerEvent::Shutdown,
+            },
         ];
 
         for StateTest { from, to, event } in transitions.into_iter() {

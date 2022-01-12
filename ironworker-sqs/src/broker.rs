@@ -6,6 +6,11 @@ use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
 use serde_json::from_str;
 use serde_json::to_string;
+use snafu::prelude::*;
+
+use crate::errors::{
+    DeleteMessageFailedSnafu, GetQueueUrlFailedSnafu, SendMessageFailedSnafu, SqsBrokerError,
+};
 
 pub struct SqsBroker {
     client: Client,
@@ -25,7 +30,7 @@ impl SqsBroker {
 
 #[async_trait]
 impl Broker for SqsBroker {
-    type Error = ();
+    type Error = SqsBrokerError;
 
     async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let queue = self
@@ -34,14 +39,14 @@ impl Broker for SqsBroker {
             .queue_name(queue)
             .send()
             .await
-            .unwrap();
+            .context(GetQueueUrlFailedSnafu)?;
         self.client
             .send_message()
             .queue_url(queue.queue_url.unwrap())
             .message_body(to_string(&message).unwrap())
             .send()
             .await
-            .unwrap();
+            .context(SendMessageFailedSnafu)?;
         Ok(())
     }
 
@@ -73,21 +78,20 @@ impl Broker for SqsBroker {
         from: &str,
         message: SerializableMessage,
     ) -> Result<(), Self::Error> {
-        dbg!(&message);
         let queue = self
             .client
             .get_queue_url()
             .queue_name(from)
             .send()
             .await
-            .unwrap();
+            .context(GetQueueUrlFailedSnafu)?;
         self.client
             .delete_message()
             .queue_url(queue.queue_url.unwrap())
             .receipt_handle(message.delivery_tag.unwrap())
             .send()
             .await
-            .unwrap();
+            .context(DeleteMessageFailedSnafu)?;
         Ok(())
     }
 }
