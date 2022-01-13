@@ -19,6 +19,8 @@ pub use builder::IronworkerApplicationBuilder;
 use shared::SharedData;
 use worker::IronWorkerPool;
 
+
+/// The main handle that coordinates workers, tasks, and configuration in order to drive a set of async queues.
 pub struct IronworkerApplication<B: Broker> {
     pub(crate) id: String,
     pub(crate) queues: HashSet<&'static str>,
@@ -39,10 +41,13 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         }
     }
 
+    /// Sends a signal to all worker pools to cease their processing. The user should `.await` the `work` function until all processing is done.
+    /// Failing to do so could result in jobs being lost.
     pub fn shutdown(&self) {
         self.notify_shutdown.notify_one()
     }
 
+    /// Sends a task to a given broker, utilizing the task's configuration to determine routing. If no configuration is provided, the special "default" queue is chosen
     pub async fn enqueue<P: Serialize + Send + Into<Message<P>>>(
         &self,
         task: &str,
@@ -63,6 +68,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         Ok(())
     }
 
+    /// Boots up the application and worker pools for every known queue. This function will not return when `shutdown` until all of the workers have ceased processing jobs.
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
 

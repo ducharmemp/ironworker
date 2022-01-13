@@ -1,5 +1,5 @@
 mod machine;
 mod pool;
 
-pub use machine::WorkerStateMachine;
-pub use pool::IronWorkerPool;
+pub(crate) use machine::WorkerStateMachine;
+pub(crate) use pool::IronWorkerPool;

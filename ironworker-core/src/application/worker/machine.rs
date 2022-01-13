@@ -12,7 +12,7 @@ use crate::{Broker, SerializableMessage};
 use super::super::shared::SharedData;
 
 #[derive(PartialEq, Eq)]
-pub enum WorkerState {
+pub(crate) enum WorkerState {
     Initialize,
     WaitForTask,
     HeartBeat,
@@ -27,7 +27,7 @@ pub enum WorkerState {
 }
 
 #[derive(PartialEq, Eq)]
-pub enum WorkerEvent {
+pub(crate) enum WorkerEvent {
     Initialized,
     TaskReceived(SerializableMessage),
     NoTaskReceived,
@@ -92,12 +92,12 @@ impl WorkerState {
     /// Returns `true` if the worker state is [`Shutdown`].
     ///
     /// [`Shutdown`]: WorkerState::Shutdown
-    pub fn is_shutdown(&self) -> bool {
+    pub(crate) fn is_shutdown(&self) -> bool {
         matches!(self, Self::Shutdown)
     }
 }
 
-pub struct WorkerStateMachine<B: Broker> {
+pub(crate) struct WorkerStateMachine<B: Broker> {
     id: String,
     queue: &'static str,
     shared_data: Arc<SharedData<B>>,
@@ -106,7 +106,7 @@ pub struct WorkerStateMachine<B: Broker> {
 }
 
 impl<B: Broker> WorkerStateMachine<B> {
-    pub fn new(id: String, queue: &'static str, shared_data: Arc<SharedData<B>>) -> Self {
+    pub(crate) fn new(id: String, queue: &'static str, shared_data: Arc<SharedData<B>>) -> Self {
         WorkerStateMachine {
             id,
             queue,
@@ -259,10 +259,11 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
-    pub async fn run(mut self, mut shutdown_channel: Receiver<()>) {
+    pub(crate) async fn run(mut self, mut shutdown_channel: Receiver<()>) {
         while !self.state.is_shutdown() {
             let event = select!(
                 _ = shutdown_channel.recv() => {
+                    // TODO: If we've dequeued a task or if we've processed the task, we need to put the task back. Right now we're leaving things in a half-finished state.
                     WorkerEvent::Shutdown
                 },
                 e = self.step() => {

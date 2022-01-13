@@ -12,7 +12,7 @@ use super::WorkerStateMachine;
 use crate::application::shared::SharedData;
 use crate::Broker;
 
-pub struct IronWorkerPool<B: Broker> {
+pub(crate) struct IronWorkerPool<B: Broker> {
     id: String,
     queue: &'static str,
     worker_count: usize,
@@ -23,7 +23,7 @@ pub struct IronWorkerPool<B: Broker> {
 }
 
 impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
-    pub fn new(
+    pub(crate) fn new(
         id: String,
         queue: &'static str,
         worker_count: usize,
@@ -51,7 +51,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
         tokio::task::spawn(async move { worker.run(rx).await })
     }
 
-    pub async fn work(mut self) {
+    pub(crate) async fn work(mut self) {
         info!(id=?self.id, queue=?self.queue, "Booting worker pool with {} workers", self.worker_count);
         let mut worker_handles: Vec<_> = (0..self.worker_count)
             .map(|_| self.spawn_worker())
