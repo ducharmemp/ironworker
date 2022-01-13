@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::{interval, timeout, Interval};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::task::TaggedError;
 use crate::{Broker, SerializableMessage};
@@ -23,6 +23,7 @@ pub(crate) enum WorkerState {
     RetryTask(&'static str, SerializableMessage),
     DeadletterTask(&'static str, SerializableMessage),
     PostFailure(SerializableMessage),
+    PreShutdown(Option<SerializableMessage>),
     Shutdown,
 }
 
@@ -43,6 +44,7 @@ pub(crate) enum WorkerEvent {
     RetryCompleted,
     DeadletterCompleted,
     PostFailureCompleted,
+    ShouldShutdown,
     Shutdown,
 }
 
@@ -84,6 +86,14 @@ impl WorkerState {
             }
 
             // Worker told to stop
+            (Self::PreExecute(message), WorkerEvent::ShouldShutdown)
+            | (Self::Execute(message), WorkerEvent::ShouldShutdown)
+            | (Self::PostExecute(message), WorkerEvent::ShouldShutdown)
+            | (Self::PostFailure(message), WorkerEvent::ShouldShutdown)
+            | (Self::ExecuteFailed(message, _), WorkerEvent::ShouldShutdown) => {
+                Self::PreShutdown(Some(message))
+            }
+            (_, WorkerEvent::ShouldShutdown) => Self::PreShutdown(None),
             (_, WorkerEvent::Shutdown) => Self::Shutdown,
             _ => unimplemented!(),
         }
@@ -206,7 +216,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
-    async fn post_failure(&self, message: &SerializableMessage) -> WorkerEvent {
+    async fn post_failure(&self, _message: &SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running failed hooks");
         for middleware in self.shared_data.middleware.iter() {
             middleware.on_task_failure().await;
@@ -252,6 +262,14 @@ impl<B: Broker> WorkerStateMachine<B> {
                 self.deadletter_task(queue, message).await
             }
             WorkerState::PostFailure(message) => self.post_failure(message).await,
+            WorkerState::PreShutdown(message) => {
+                info!(id=?self.id, "Shutting down worker");
+                if let Some(message) = message {
+                    debug!(id=?self.id, "Re-enqueueing message");
+                    self.retry_task(self.queue, message).await;
+                }
+                WorkerEvent::Shutdown
+            }
             WorkerState::Shutdown => {
                 // For completeness, if we're shut down we should just shut down
                 WorkerEvent::Shutdown
@@ -263,8 +281,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         while !self.state.is_shutdown() {
             let event = select!(
                 _ = shutdown_channel.recv() => {
-                    // TODO: If we've dequeued a task or if we've processed the task, we need to put the task back. Right now we're leaving things in a half-finished state.
-                    WorkerEvent::Shutdown
+                    WorkerEvent::ShouldShutdown
                 },
                 e = self.step() => {
                     e
@@ -456,9 +473,14 @@ mod test {
             },
             StateTest {
                 from: WorkerState::WaitForTask,
-                to: WorkerState::Shutdown,
-                event: WorkerEvent::Shutdown,
+                to: WorkerState::PreShutdown(None),
+                event: WorkerEvent::ShouldShutdown,
             },
+            StateTest {
+                from: WorkerState::PreShutdown(None),
+                to: WorkerState::Shutdown,
+                event: WorkerEvent::Shutdown
+            }
         ];
 
         for StateTest { from, to, event } in transitions.into_iter() {

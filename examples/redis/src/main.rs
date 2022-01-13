@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 
-    for _ in 0..50000 {
+    for _ in 0..5 {
         my_panicking_task.task().perform_later(&app, 123).await?;
         my_task.task().perform_later(&app, 123).await?;
         my_async_task.task().perform_later(&app, 123).await?;
