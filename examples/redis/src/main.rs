@@ -1,8 +1,4 @@
 #![deny(clippy::all)]
-
-use std::error::Error;
-
-use anyhow::Result;
 use async_trait::async_trait;
 use ironworker_core::{
     ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder,
@@ -41,19 +37,19 @@ impl Complex {
     }
 }
 
-fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+fn my_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+async fn my_async_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Send>> {
+fn my_complex_task(_message: Message<Complex>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn Error + Send>> {
+fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), TestEnum> {
     Ok(())
 }
 
@@ -68,7 +64,7 @@ enum TestEnum {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let app = IronworkerApplicationBuilder::default()
         .broker(RedisBroker::new("redis://localhost:6379").await)
@@ -88,8 +84,7 @@ async fn main() -> Result<()> {
 
     my_complex_task
         .task()
-        .retry_on(
-            TestEnum::Failed,
+        .retry_on::<TestEnum>(
             ErrorRetryConfiguration::default().with_attempts(5),
         )
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))

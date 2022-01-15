@@ -12,7 +12,7 @@ use crate::{IntoTask, PerformableTask, Task};
 
 use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
 use super::config::Config;
-use super::error::{ErrorRetryConfiguration, TaggedError};
+use super::error::{ErrorRetryConfiguration};
 use super::{ConfigurableTask, FunctionTask};
 
 #[derive(Clone, Copy)]
@@ -58,9 +58,9 @@ where
         &self,
         payload: SerializableMessage,
         _state: &Container![Send + Sync],
-    ) -> Result<(), TaggedError> {
+    ) -> Result<(), (TypeId, Box<dyn TaskError>)> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).map_err(|e| e.into())
+        (self.func)(message).map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
     }
 }
 
@@ -148,9 +148,9 @@ macro_rules! impl_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), TaggedError> {
+            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), (TypeId, Box<dyn TaskError>)> {
                 let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).map_err(|e| e.into())
+                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
             }
         }
 

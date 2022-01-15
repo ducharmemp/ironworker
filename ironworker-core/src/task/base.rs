@@ -1,9 +1,12 @@
+use std::any::TypeId;
 use std::error::Error;
 use std::marker::PhantomData;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use state::Container;
+use snafu::{AsErrorSource, AsBacktrace};
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
@@ -11,7 +14,7 @@ use crate::message::{Message, SerializableMessage};
 use crate::IronworkerError;
 
 use super::config::Config;
-use super::error::{ErrorRetryConfiguration, TaggedError};
+use super::error::{ErrorRetryConfiguration};
 
 macro_rules! auxiliary_trait{
     ($traitname: ident, $($t:tt)*) => {
@@ -20,7 +23,7 @@ macro_rules! auxiliary_trait{
     }
 }
 
-auxiliary_trait!(TaskError, Into<TaggedError> + 'static);
+auxiliary_trait!(TaskError, AsErrorSource + Debug + 'static);
 auxiliary_trait!(TaskPayload, for<'de> Deserialize<'de> + Serialize + 'static + Send);
 auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
 auxiliary_trait!(ThreadSafeBroker, Broker + Send + Sync);
@@ -34,7 +37,7 @@ pub trait Task: SendSyncStatic {
         &self,
         payload: SerializableMessage,
         state: &Container![Send + Sync],
-    ) -> Result<(), TaggedError>;
+    ) -> Result<(), (TypeId, Box<dyn TaskError>)>;
 }
 
 #[async_trait]

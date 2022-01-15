@@ -15,7 +15,6 @@ use crate::{ConfigurableTask, IntoTask, PerformableTask, Task};
 use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
 use super::config::Config;
 use super::error::ErrorRetryConfiguration;
-use super::error::TaggedError;
 use super::FunctionTask;
 
 #[derive(Clone, Copy)]
@@ -63,9 +62,9 @@ where
         &self,
         payload: SerializableMessage,
         _state: &Container![Send + Sync],
-    ) -> Result<(), TaggedError> {
+    ) -> Result<(), (TypeId, Box<dyn TaskError>)> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).await.map_err(|e| e.into())
+        (self.func)(message).await.map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
     }
 }
 
@@ -158,9 +157,9 @@ macro_rules! impl_async_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), TaggedError> {
+            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), (TypeId, Box<dyn TaskError>)> {
                 let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).await.map_err(|e| e.into())
+                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).await.map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
             }
         }
 
@@ -268,7 +267,7 @@ mod test {
 
     #[tokio::test]
     async fn perform_later_enqueues_the_task() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send + 'static>> {
             Ok(())
         }
 

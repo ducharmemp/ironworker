@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
 use uuid::Uuid;
 
-use crate::task::TaggedError;
+use crate::task::TaskError;
 
 #[derive(Debug)]
 pub struct Message<T>(T);
@@ -25,9 +25,11 @@ pub struct SerializableError {
     message: String,
 }
 
-impl From<TaggedError> for SerializableError {
-    fn from(err: TaggedError) -> Self {
-        Self { message: err.repr }
+impl SerializableError {
+    pub(crate) fn new(err: Box<dyn TaskError>) -> Self {
+        Self {
+            message: format!("{:?}", err)
+        }
     }
 }
 

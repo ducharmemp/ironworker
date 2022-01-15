@@ -98,7 +98,7 @@ mod test {
 
     #[tokio::test]
     async fn register_task_builds_queue() {
-        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send + Sync>> {
             Ok(())
         }
 
@@ -110,7 +110,7 @@ mod test {
 
     #[tokio::test]
     async fn register_task_boxes_task() {
-        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send + Sync>> {
             Ok(())
         }
 

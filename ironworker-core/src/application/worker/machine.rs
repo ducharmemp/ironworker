@@ -1,3 +1,4 @@
+use std::any::{Any, TypeId};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,8 +7,9 @@ use tokio::sync::broadcast::Receiver;
 use tokio::time::{interval, timeout, Interval};
 use tracing::{debug, error, info};
 
-use crate::task::TaggedError;
+use crate::message::SerializableError;
 use crate::{Broker, SerializableMessage};
+use crate::task::TaskError;
 
 use super::super::shared::SharedData;
 
@@ -19,7 +21,7 @@ pub(crate) enum WorkerState {
     PreExecute(SerializableMessage),
     Execute(SerializableMessage),
     PostExecute(SerializableMessage),
-    ExecuteFailed(SerializableMessage, TaggedError),
+    ExecuteFailed(TypeId, SerializableMessage),
     RetryTask(&'static str, SerializableMessage),
     DeadletterTask(&'static str, SerializableMessage),
     PostFailure(SerializableMessage),
@@ -37,7 +39,7 @@ pub(crate) enum WorkerEvent {
     PreExecuteCompleted,
     PreExecuteFailed,
     ExecuteCompleted,
-    ExecuteFailed(TaggedError),
+    ExecuteFailed(TypeId, SerializableMessage),
     ShouldRetry(&'static str, SerializableMessage),
     ShouldDeadletter(&'static str, SerializableMessage),
     PostExecuteCompleted,
@@ -65,8 +67,8 @@ impl WorkerState {
 
             // Task execution
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
-            (Self::Execute(message), WorkerEvent::ExecuteFailed(error)) => {
-                Self::ExecuteFailed(message, error)
+            (Self::Execute(_), WorkerEvent::ExecuteFailed(error_type_id, message)) => {
+                Self::ExecuteFailed(error_type_id, message)
             }
 
             // Post execution
@@ -90,7 +92,7 @@ impl WorkerState {
             | (Self::Execute(message), WorkerEvent::ShouldShutdown)
             | (Self::PostExecute(message), WorkerEvent::ShouldShutdown)
             | (Self::PostFailure(message), WorkerEvent::ShouldShutdown)
-            | (Self::ExecuteFailed(message, _), WorkerEvent::ShouldShutdown) => {
+            | (Self::ExecuteFailed(_, message), WorkerEvent::ShouldShutdown) => {
                 Self::PreShutdown(Some(message))
             }
             (_, WorkerEvent::ShouldShutdown) => Self::PreShutdown(None),
@@ -154,7 +156,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         WorkerEvent::PreExecuteCompleted
     }
 
-    async fn execute(&self, message: &SerializableMessage) -> WorkerEvent {
+    async fn execute(&self, mut message: SerializableMessage) -> WorkerEvent {
         let handler = self.shared_data.tasks.get(&message.task.as_str());
         let handler = handler.unwrap();
         let task_future = timeout(
@@ -164,13 +166,18 @@ impl<B: Broker> WorkerStateMachine<B> {
 
         match task_future.await {
             Ok(task_result) => {
-                if let Err(e) = task_result {
-                    WorkerEvent::ExecuteFailed(e)
+                if let Err((error_type_id, err)) = task_result {
+                    message.err.replace(SerializableError::new(err));
+                    WorkerEvent::ExecuteFailed(error_type_id, message)
                 } else {
                     WorkerEvent::ExecuteCompleted
                 }
             }
-            Err(e) => WorkerEvent::ExecuteFailed(e.into()),
+            Err(e) => {
+                let type_id = e.type_id();
+                message.err.replace(SerializableError::new(Box::new(e) as Box<_>));
+                WorkerEvent::ExecuteFailed(type_id, message)
+            },
         }
     }
 
@@ -188,8 +195,8 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn execute_failed(
         &self,
+        error_type_id: &TypeId,
         message: &SerializableMessage,
-        error: &TaggedError,
     ) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let mut message = message.clone();
@@ -198,12 +205,12 @@ impl<B: Broker> WorkerStateMachine<B> {
         let handler_config = handler.config();
         let retry_on_config = handler_config
             .retry_on
-            .get(&error.type_id)
+            .get(error_type_id)
             .cloned()
             .unwrap_or_default();
         let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
         let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
-        let should_discard = handler_config.discard_on.contains(&error.type_id);
+        let should_discard = handler_config.discard_on.contains(error_type_id);
 
         // message.err = Some(error.into());
         if message.retries < retries && !should_discard {
@@ -254,7 +261,7 @@ impl<B: Broker> WorkerStateMachine<B> {
                 WorkerEvent::HeartBeatCompleted
             }
             WorkerState::PreExecute(message) => self.pre_execute(message).await,
-            WorkerState::Execute(message) => self.execute(message).await,
+            WorkerState::Execute(message) => self.execute(message.clone()).await,
             WorkerState::PostExecute(message) => self.post_execute(message).await,
             WorkerState::ExecuteFailed(message, error) => self.execute_failed(message, error).await,
             WorkerState::RetryTask(queue, message) => self.retry_task(queue, message).await,

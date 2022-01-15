@@ -61,7 +61,7 @@ async fn create(db: Db, post: Json<Post>) -> Result<Created<Json<Post>>> {
     Ok(Created::new("/").body(post))
 }
 
-fn create_posts(_payload: Message<Post>) -> Result<(), Box<dyn Error + Send>> {
+fn create_posts(_payload: Message<Post>) -> Result<()> {
     // futures::executor::block_on(async {
     //     pool.run(|conn| async move {
     //         diesel::insert_into(posts::table)
