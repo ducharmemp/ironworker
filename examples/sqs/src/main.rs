@@ -96,10 +96,7 @@ async fn main() -> Result<()> {
 
     my_complex_task
         .task()
-        .retry_on(
-            TestEnum::Failed,
-            ErrorRetryConfiguration::default().with_attempts(5),
-        )
+        .retry_on::<TestEnum>(ErrorRetryConfiguration::default().with_attempts(5))
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 

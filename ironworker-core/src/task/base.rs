@@ -2,7 +2,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use state::Container;
 
 use crate::application::IronworkerApplication;
@@ -13,8 +13,20 @@ use crate::IronworkerError;
 use super::config::Config;
 use super::error::{ErrorRetryConfiguration, TaggedError};
 
+macro_rules! auxiliary_trait{
+    ($traitname: ident, $($t:tt)*) => {
+        pub trait $traitname : $($t)* {}
+        impl<T> $traitname for T where T: $($t)* {}
+    }
+}
+
+auxiliary_trait!(TaskError, Into<TaggedError> + 'static);
+auxiliary_trait!(TaskPayload, for<'de> Deserialize<'de> + Serialize + 'static + Send);
+auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
+auxiliary_trait!(ThreadSafeBroker, Broker + Send + Sync);
+
 #[async_trait]
-pub trait Task: Send + Sync + 'static {
+pub trait Task: SendSyncStatic {
     fn name(&self) -> &'static str;
     fn config(&self) -> &Config;
 
@@ -72,9 +84,9 @@ pub trait ConfigurableTask: Task {
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
     #[must_use]
-    fn retry_on<E: Into<TaggedError>>(self, err: E, config: ErrorRetryConfiguration) -> Self;
+    fn retry_on<E: TaskError>(self, config: ErrorRetryConfiguration) -> Self;
     #[must_use]
-    fn discard_on<E: Into<TaggedError>>(self, err: E) -> Self;
+    fn discard_on<E: TaskError>(self) -> Self;
     #[must_use]
     fn retries(self, count: usize) -> Self;
 }

@@ -1,16 +1,16 @@
+use std::any::TypeId;
 use std::error::Error;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use serde_json::from_value;
 use state::Container;
 
 use crate::application::IronworkerApplication;
-use crate::broker::Broker;
 use crate::message::{Message, SerializableMessage};
 use crate::{IntoTask, PerformableTask, Task};
 
+use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
 use super::config::Config;
 use super::error::{ErrorRetryConfiguration, TaggedError};
 use super::{ConfigurableTask, FunctionTask};
@@ -22,9 +22,9 @@ pub struct FunctionMarker;
 
 impl<T, F, Err> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
 where
-    Err: Into<TaggedError> + 'static,
-    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
+    Err: TaskError,
+    T: TaskPayload,
+    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
 {
     type Task = FunctionTask<(FunctionMarker, T, Err), F>;
     fn task(self) -> Self::Task {
@@ -39,9 +39,9 @@ where
 #[async_trait]
 impl<T, F, Err> Task for FunctionTask<(FunctionMarker, T, Err), F>
 where
-    Err: Into<TaggedError> + 'static,
-    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
+    Err: TaskError,
+    T: TaskPayload,
+    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -67,11 +67,11 @@ where
 #[async_trait]
 impl<T, F, Err> PerformableTask<T> for FunctionTask<(FunctionMarker, T, Err), F>
 where
-    Err: Into<TaggedError> + 'static,
-    T: for<'de> Deserialize<'de> + Serialize + 'static + Send + Into<Message<T>>,
-    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
+    Err: TaskError,
+    T: TaskPayload + Into<Message<T>>,
+    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
 {
-    async fn perform_now<B: Broker + Send + Sync>(
+    async fn perform_now<B: ThreadSafeBroker>(
         &self,
         _app: &IronworkerApplication<B>,
         _payload: T,
@@ -82,27 +82,25 @@ where
 
 impl<T, F, Err> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err), F>
 where
-    Err: Into<TaggedError> + 'static,
-    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-    F: Fn(Message<T>) -> Result<(), Err> + Send + Sync + 'static,
+    Err: TaskError,
+    T: TaskPayload,
+    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
 {
     fn queue_as(mut self, queue_name: &'static str) -> Self {
         self.config.queue = queue_name;
         self
     }
 
-    fn retry_on<E: Into<TaggedError>>(mut self, err: E, config: ErrorRetryConfiguration) -> Self {
-        let tagged = err.into();
+    fn retry_on<E: TaskError>(mut self,  config: ErrorRetryConfiguration) -> Self {
         self.config
             .retry_on
-            .entry(tagged.type_id)
+            .entry(TypeId::of::<E>())
             .or_insert_with(|| config);
         self
     }
 
-    fn discard_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
-        let tagged = err.into();
-        self.config.discard_on.insert(tagged.type_id);
+    fn discard_on<E: TaskError>(mut self) -> Self {
+        self.config.discard_on.insert(TypeId::of::<E>());
         self
     }
 
@@ -116,10 +114,10 @@ macro_rules! impl_task_function {
     ($($param: ident),*) => {
         impl<T, F, Err, $($param),*> IntoTask<(IsFunctionSystem, FunctionMarker, T, Err, $($param),*)> for F
         where
-            Err: Into<TaggedError> + 'static,
-            T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
-            $($param: Send + Sync + 'static),*
+            Err: TaskError,
+            T: TaskPayload,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
+            $($param: SendSyncStatic),*
         {
             type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -134,10 +132,10 @@ macro_rules! impl_task_function {
         #[async_trait]
         impl<T, F, Err, $($param),*> Task for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
-            Err: Into<TaggedError> + 'static,
-            T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
-            $($param: Send + Sync + 'static),*
+            Err: TaskError,
+            T: TaskPayload,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
+            $($param: SendSyncStatic),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -160,12 +158,12 @@ macro_rules! impl_task_function {
         impl<T, F, Err, $($param),*> PerformableTask<T>
             for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
-            Err: Into<TaggedError> + 'static,
-            T: for<'de> Deserialize<'de> + Serialize + 'static + Send + Into<Message<T>>,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
-            $($param: Send + Sync + 'static),*
+            Err: TaskError,
+            T: TaskPayload + Into<Message<T>>,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
+            $($param: SendSyncStatic),*
         {
-            async fn perform_now<B: Broker + Send + Sync>(
+            async fn perform_now<B: ThreadSafeBroker>(
                 &self,
                 _app: &IronworkerApplication<B>,
                 _payload: T,
@@ -176,25 +174,23 @@ macro_rules! impl_task_function {
 
         impl<T, F, Err, $($param),*> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
-            Err: Into<TaggedError> + 'static,
-            T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + Send + Sync + 'static,
-            $($param: Send + Sync + 'static),*
+            Err: TaskError,
+            T: TaskPayload,
+            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
+            $($param: SendSyncStatic),*
         {
             fn queue_as(mut self, queue_name: &'static str) -> Self {
                 self.config.queue = queue_name;
                 self
             }
 
-            fn retry_on<E: Into<TaggedError>>(mut self, err: E, config: ErrorRetryConfiguration) -> Self {
-                let tagged = err.into();
-                self.config.retry_on.entry(tagged.type_id).or_insert_with(|| config);
+            fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
+                self.config.retry_on.entry(TypeId::of::<E>()).or_insert_with(|| config);
                 self
             }
 
-            fn discard_on<E: Into<TaggedError>>(mut self, err: E) -> Self {
-                let tagged = err.into();
-                self.config.discard_on.insert(tagged.type_id);
+            fn discard_on<E: TaskError>(mut self) -> Self {
+                self.config.discard_on.insert(TypeId::of::<E>());
                 self
             }
 
