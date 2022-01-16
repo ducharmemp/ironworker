@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use state::Container;
-use snafu::{AsErrorSource, AsBacktrace};
+use snafu::AsErrorSource;
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
@@ -14,7 +14,7 @@ use crate::message::{Message, SerializableMessage};
 use crate::IronworkerError;
 
 use super::config::Config;
-use super::error::{ErrorRetryConfiguration};
+use super::error::ErrorRetryConfiguration;
 
 macro_rules! auxiliary_trait{
     ($traitname: ident, $($t:tt)*) => {

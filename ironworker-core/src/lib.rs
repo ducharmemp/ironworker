@@ -29,3 +29,14 @@ pub use error::{IronworkerError, IronworkerResult};
 pub use message::{Message, SerializableMessage};
 pub use middleware::IronworkerMiddleware;
 pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableTask, Task};
+
+#[cfg(test)]
+pub(crate) mod test {
+    use snafu::prelude::*;
+
+    #[derive(Snafu, Debug)]
+    pub enum TestEnum {
+        #[snafu(display("The task failed"))]
+        Failed,
+    }
+}

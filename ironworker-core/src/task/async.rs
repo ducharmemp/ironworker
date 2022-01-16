@@ -232,7 +232,7 @@ impl_async_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13
 
 #[cfg(test)]
 mod test {
-    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder};
+    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder, test::TestEnum};
 
     use super::*;
 
@@ -267,7 +267,7 @@ mod test {
 
     #[tokio::test]
     async fn perform_later_enqueues_the_task() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send + 'static>> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -284,7 +284,7 @@ mod test {
 
     #[tokio::test]
     async fn name_gives_the_name_of_the_task() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -293,7 +293,7 @@ mod test {
 
     #[tokio::test]
     async fn queue_as_sets_the_queue() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -310,7 +310,7 @@ mod test {
 
     #[tokio::test]
     async fn retries_sets_up_the_base_retries() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 

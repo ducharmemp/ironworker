@@ -1158,6 +1158,7 @@ dependencies = [
  "criterion",
  "ironworker-core",
  "ironworker-redis",
+ "snafu",
  "tokio",
 ]
 
@@ -1899,6 +1900,7 @@ dependencies = [
  "ironworker-rocket",
  "rocket 0.5.0-rc.1",
  "rocket_sync_db_pools",
+ "snafu",
  "tokio",
  "tracing-subscriber",
 ]

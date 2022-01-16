@@ -92,13 +92,13 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
 mod test {
     use std::error::Error;
 
-    use crate::{broker::InProcessBroker, IntoTask, Message};
+    use crate::{broker::InProcessBroker, IntoTask, Message, test::TestEnum};
 
     use super::*;
 
     #[tokio::test]
     async fn register_task_builds_queue() {
-        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send + Sync>> {
+        fn test_task(_m: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -110,7 +110,7 @@ mod test {
 
     #[tokio::test]
     async fn register_task_boxes_task() {
-        fn test_task(_m: Message<u32>) -> Result<(), Box<dyn Error + Send + Sync>> {
+        fn test_task(_m: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 

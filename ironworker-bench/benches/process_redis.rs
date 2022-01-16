@@ -3,6 +3,7 @@ use std::error::Error;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::{criterion_group, criterion_main};
+use snafu::prelude::*;
 
 use ironworker_core::IntoTask;
 use ironworker_core::IronworkerApplicationBuilder;
@@ -10,7 +11,13 @@ use ironworker_core::Message;
 use ironworker_core::PerformableTask;
 use ironworker_redis::RedisBroker;
 
-fn bench_task(_payload: Message<usize>) -> Result<(), Box<dyn Error + Send>> {
+#[derive(Snafu, Debug)]
+enum TestEnum {
+    #[snafu(display("The task failed"))]
+    Failed,
+}
+
+fn bench_task(_payload: Message<usize>) -> Result<(), TestEnum> {
     Ok(())
 }
 

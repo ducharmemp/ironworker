@@ -1,8 +1,4 @@
 #![deny(clippy::all)]
-
-use std::error::Error;
-
-use anyhow::Result;
 use async_trait::async_trait;
 use aws_sdk_sqs::Endpoint;
 use ironworker_core::{
@@ -42,19 +38,19 @@ impl Complex {
     }
 }
 
-fn my_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+fn my_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-async fn my_async_task(_message: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+async fn my_async_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-fn my_complex_task(_message: Message<Complex>) -> Result<(), Box<dyn Error + Send>> {
+fn my_complex_task(_message: Message<Complex>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), Box<dyn Error + Send>> {
+fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), TestEnum> {
     Ok(())
 }
 
@@ -69,7 +65,7 @@ enum TestEnum {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let shared_config = aws_config::load_from_env().await;
     let sqs_config_builder = aws_sdk_sqs::config::Builder::from(&shared_config);

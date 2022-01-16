@@ -12,7 +12,7 @@ use crate::{IntoTask, PerformableTask, Task};
 
 use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
 use super::config::Config;
-use super::error::{ErrorRetryConfiguration};
+use super::error::ErrorRetryConfiguration;
 use super::{ConfigurableTask, FunctionTask};
 
 #[derive(Clone, Copy)]
@@ -224,7 +224,7 @@ mod test {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder};
+    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder, test::TestEnum};
 
     use super::*;
 
@@ -234,7 +234,7 @@ mod test {
         let inner = status_mock_called.clone();
 
         let status_mock = Box::new(
-            move |_state: Message<u32>| -> Result<(), Box<dyn Error + Send>> {
+            move |_state: Message<u32>| -> Result<(), TestEnum> {
                 inner.store(true, std::sync::atomic::Ordering::Relaxed);
                 Ok(())
             },
@@ -256,7 +256,7 @@ mod test {
 
     #[tokio::test]
     async fn perform_later_enqueues_the_task() {
-        fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -273,7 +273,7 @@ mod test {
 
     #[tokio::test]
     async fn name_gives_the_name_of_the_task() {
-        fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -282,7 +282,7 @@ mod test {
 
     #[tokio::test]
     async fn queue_as_sets_the_queue() {
-        fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 
@@ -299,7 +299,7 @@ mod test {
 
     #[tokio::test]
     async fn retries_sets_up_the_base_retries() {
-        fn some_task(_payload: Message<u32>) -> Result<(), Box<dyn Error + Send>> {
+        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())
         }
 

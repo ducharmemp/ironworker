@@ -7,7 +7,6 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel;
 
-use std::error::Error;
 use std::sync::Arc;
 
 use ironworker_core::{
@@ -19,8 +18,14 @@ use rocket::fairing::AdHoc;
 use rocket::response::{status::Created, Debug};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::{Build, Rocket, State};
-
+use snafu::Snafu;
 use diesel::prelude::*;
+
+#[derive(Snafu, Debug)]
+enum TestEnum {
+    #[snafu(display("The task failed"))]
+    Failed,
+}
 
 #[database("diesel")]
 struct Db(diesel::SqliteConnection);
@@ -61,7 +66,7 @@ async fn create(db: Db, post: Json<Post>) -> Result<Created<Json<Post>>> {
     Ok(Created::new("/").body(post))
 }
 
-fn create_posts(_payload: Message<Post>) -> Result<()> {
+fn create_posts(_payload: Message<Post>) -> Result<(), TestEnum> {
     // futures::executor::block_on(async {
     //     pool.run(|conn| async move {
     //         diesel::insert_into(posts::table)
