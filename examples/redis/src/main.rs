@@ -84,9 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     my_complex_task
         .task()
-        .retry_on::<TestEnum>(
-            ErrorRetryConfiguration::default().with_attempts(5),
-        )
+        .retry_on::<TestEnum>(ErrorRetryConfiguration::default().with_attempts(5))
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 

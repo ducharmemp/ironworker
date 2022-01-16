@@ -1,10 +1,10 @@
-use std::marker::PhantomData;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use state::Container;
+use serde::{Deserialize, Serialize};
 use snafu::AsErrorSource;
+use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
@@ -22,7 +22,10 @@ macro_rules! auxiliary_trait{
 }
 
 auxiliary_trait!(TaskError, AsErrorSource + Debug + 'static);
-auxiliary_trait!(TaskPayload, for<'de> Deserialize<'de> + Serialize + 'static + Send);
+auxiliary_trait!(
+    TaskPayload,
+    for<'de> Deserialize<'de> + Serialize + 'static + Send
+);
 auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
 auxiliary_trait!(ThreadSafeBroker, Broker + Send + Sync);
 

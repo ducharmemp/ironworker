@@ -32,10 +32,10 @@ pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableT
 
 #[cfg(test)]
 pub(crate) mod test {
-    use chrono::Utc;
+    use chrono::{SubsecRound, Utc};
     use snafu::prelude::*;
 
-    use crate::{Task, SerializableMessage, Message, IntoTask, message::SerializableError};
+    use crate::{message::SerializableError, IntoTask, Message, SerializableMessage, Task};
 
     #[derive(Snafu, Debug)]
     pub enum TestEnum {
@@ -57,7 +57,7 @@ pub(crate) mod test {
 
     pub fn message(task: Box<dyn Task>) -> SerializableMessage {
         SerializableMessage {
-            enqueued_at: Utc::now(),
+            enqueued_at: Utc::now().trunc_subsecs(2), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: task.name().to_string(),
@@ -78,7 +78,9 @@ pub(crate) mod test {
 
     pub fn failed_message() -> SerializableMessage {
         let mut message = message(boxed_task(failed.task()));
-        message.err.replace(SerializableError::new(Box::new(TestEnum::Failed) as Box<_>));
+        message
+            .err
+            .replace(SerializableError::new(Box::new(TestEnum::Failed) as Box<_>));
         message
     }
 }

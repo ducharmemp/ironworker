@@ -28,7 +28,7 @@ pub struct SerializableError {
 impl SerializableError {
     pub(crate) fn new(err: Box<dyn TaskError>) -> Self {
         Self {
-            message: format!("{:?}", err)
+            message: format!("{:?}", err),
         }
     }
 }

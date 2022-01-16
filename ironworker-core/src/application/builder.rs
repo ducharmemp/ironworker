@@ -90,7 +90,7 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
 
 #[cfg(test)]
 mod test {
-    use crate::{broker::InProcessBroker, IntoTask, Message, test::TestEnum};
+    use crate::{broker::InProcessBroker, test::TestEnum, IntoTask, Message};
 
     use super::*;
 

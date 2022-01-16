@@ -9,6 +9,7 @@ extern crate diesel;
 
 use std::sync::Arc;
 
+use diesel::prelude::*;
 use ironworker_core::{
     IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, PerformableTask,
 };
@@ -19,7 +20,6 @@ use rocket::response::{status::Created, Debug};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::{Build, Rocket, State};
 use snafu::Snafu;
-use diesel::prelude::*;
 
 #[derive(Snafu, Debug)]
 enum TestEnum {

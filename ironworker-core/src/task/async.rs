@@ -8,9 +8,9 @@ use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::message::{Message, SerializableMessage};
-use crate::{ConfigurableTask, IntoTask, PerformableTask, Task, IronworkerError};
+use crate::{ConfigurableTask, IntoTask, IronworkerError, PerformableTask, Task};
 
-use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
+use super::base::{SendSyncStatic, TaskError, TaskPayload, ThreadSafeBroker};
 use super::config::Config;
 use super::error::ErrorRetryConfiguration;
 use super::FunctionTask;
@@ -62,7 +62,9 @@ where
         _state: &Container![Send + Sync],
     ) -> Result<(), Box<dyn TaskError>> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).await.map_err(|e| Box::new(e) as Box<_>)
+        (self.func)(message)
+            .await
+            .map_err(|e| Box::new(e) as Box<_>)
     }
 }
 
@@ -97,15 +99,12 @@ where
     }
 
     fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
-        self.config
-            .retry_on
-            .entry(TypeId::of::<E>())
-            .or_insert_with(|| config);
+        todo!();
         self
     }
 
     fn discard_on<E: TaskError>(mut self) -> Self {
-        self.config.discard_on.insert(TypeId::of::<E>());
+        todo!();
         self
     }
 
@@ -155,9 +154,9 @@ macro_rules! impl_async_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), (TypeId, Box<dyn TaskError>)> {
+            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), Box<dyn TaskError>> {
                 let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).await.map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
+                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).await.map_err(|e| Box::new(e) as Box<_>)
             }
         }
 
@@ -194,13 +193,13 @@ macro_rules! impl_async_task_function {
             }
 
             fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
-                self.config.retry_on.entry(TypeId::of::<E>()).or_insert_with(|| config);
+                todo!();
                 self
             }
 
             fn discard_on<E: TaskError>(mut self) -> Self {
-               self.config.discard_on.insert(TypeId::of::<E>());
-               self
+                todo!();
+                self
             }
 
             fn retries(mut self, count: usize) -> Self {
@@ -230,7 +229,7 @@ impl_async_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13
 
 #[cfg(test)]
 mod test {
-    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder, test::TestEnum};
+    use crate::{broker::InProcessBroker, test::TestEnum, IronworkerApplicationBuilder};
 
     use super::*;
 

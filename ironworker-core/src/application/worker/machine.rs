@@ -1,4 +1,3 @@
-use std::any::{Any, TypeId};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -66,9 +65,7 @@ impl WorkerState {
 
             // Task execution
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
-            (Self::Execute(_), WorkerEvent::ExecuteFailed(message)) => {
-                Self::ExecuteFailed(message)
-            }
+            (Self::Execute(_), WorkerEvent::ExecuteFailed(message)) => Self::ExecuteFailed(message),
 
             // Post execution
             (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted) => Self::WaitForTask,
@@ -165,7 +162,7 @@ impl<B: Broker> WorkerStateMachine<B> {
 
         match task_future.await {
             Ok(task_result) => {
-                if let Err((error_type_id, err)) = task_result {
+                if let Err(err) = task_result {
                     message.err.replace(SerializableError::new(err));
                     WorkerEvent::ExecuteFailed(message)
                 } else {
@@ -173,9 +170,11 @@ impl<B: Broker> WorkerStateMachine<B> {
                 }
             }
             Err(e) => {
-                message.err.replace(SerializableError::new(Box::new(e) as Box<_>));
+                message
+                    .err
+                    .replace(SerializableError::new(Box::new(e) as Box<_>));
                 WorkerEvent::ExecuteFailed(message)
-            },
+            }
         }
     }
 
@@ -191,23 +190,23 @@ impl<B: Broker> WorkerStateMachine<B> {
         WorkerEvent::PostExecuteCompleted
     }
 
-    async fn execute_failed(
-        &self,
-        message: &SerializableMessage,
-    ) -> WorkerEvent {
+    async fn execute_failed(&self, message: &SerializableMessage) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let mut message = message.clone();
         let handler = self.shared_data.tasks.get(&message.task.as_str());
         let handler = handler.unwrap();
         let handler_config = handler.config();
-        let retry_on_config = handler_config
-            .retry_on
-            .get(error_type_id)
-            .cloned()
-            .unwrap_or_default();
-        let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
-        let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
-        let should_discard = handler_config.discard_on.contains(error_type_id);
+        let retries = handler_config.retries;
+        let should_discard = false;
+        let queue = handler_config.queue;
+        // let retry_on_config = handler_config
+        //     .retry_on
+        //     .get(error_type_id)
+        //     .cloned()
+        //     .unwrap_or_default();
+        // let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
+        // let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
+        // let should_discard = handler_config.discard_on.contains(error_type_id);
 
         // message.err = Some(error.into());
         if message.retries < retries && !should_discard {
@@ -299,13 +298,19 @@ impl<B: Broker> WorkerStateMachine<B> {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap};
+    use std::collections::HashMap;
 
+    use async_trait::async_trait;
     use snafu::Snafu;
+    use tokio::sync::Mutex;
     use tokio::time::{self, sleep};
 
+    use crate::test::{
+        boxed_task, enqueued_successful_message, failed, failed_message, successful,
+        successful_message,
+    };
+    use crate::IronworkerMiddleware;
     use crate::{broker::InProcessBroker, ConfigurableTask, IntoTask, Message, Task};
-    use crate::test::{successful, failed, successful_message, failed_message, boxed_task, enqueued_successful_message};
 
     use super::*;
 
@@ -315,7 +320,21 @@ mod test {
             middleware: Default::default(),
             tasks: HashMap::from_iter([
                 (successful.task().name(), boxed_task(successful.task())),
-                (failed.task().name(), boxed_task(failed.task()))
+                (failed.task().name(), boxed_task(failed.task())),
+            ]),
+            state: Default::default(),
+        })
+    }
+
+    fn shared_context_with_middleware(
+        middleware: Vec<Box<dyn IronworkerMiddleware>>,
+    ) -> Arc<SharedData<InProcessBroker>> {
+        Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware,
+            tasks: HashMap::from_iter([
+                (successful.task().name(), boxed_task(successful.task())),
+                (failed.task().name(), boxed_task(failed.task())),
             ]),
             state: Default::default(),
         })
@@ -403,9 +422,7 @@ mod test {
             },
             StateTest {
                 from: WorkerState::Execute(enqueued_successful_message()),
-                to: WorkerState::ExecuteFailed(
-                    failed_message(),
-                ),
+                to: WorkerState::ExecuteFailed(failed_message()),
                 event: WorkerEvent::ExecuteFailed(failed_message()),
             },
             StateTest {
@@ -414,40 +431,24 @@ mod test {
                 event: WorkerEvent::PostExecuteCompleted,
             },
             StateTest {
-                from: WorkerState::RetryTask("default", successful_message()),
+                from: WorkerState::RetryTask("default", failed_message()),
                 to: WorkerState::PostFailure(failed_message()),
                 event: WorkerEvent::RetryCompleted,
             },
             StateTest {
-                from: WorkerState::DeadletterTask(
-                    "default",
-                    failed_message(),
-                ),
+                from: WorkerState::DeadletterTask("default", failed_message()),
                 to: WorkerState::PostFailure(failed_message()),
                 event: WorkerEvent::DeadletterCompleted,
             },
             StateTest {
-                from: WorkerState::ExecuteFailed(
-                    failed_message(),
-                ),
+                from: WorkerState::ExecuteFailed(failed_message()),
                 to: WorkerState::RetryTask("default", failed_message()),
-                event: WorkerEvent::ShouldRetry(
-                    "default",
-                    failed_message(),
-                ),
+                event: WorkerEvent::ShouldRetry("default", failed_message()),
             },
             StateTest {
-                from: WorkerState::ExecuteFailed(
-                    failed_message(),
-                ),
-                to: WorkerState::DeadletterTask(
-                    "default",
-                    failed_message(),
-                ),
-                event: WorkerEvent::ShouldDeadletter(
-                    "default",
-                    failed_message(),
-                ),
+                from: WorkerState::ExecuteFailed(failed_message()),
+                to: WorkerState::DeadletterTask("default", failed_message()),
+                event: WorkerEvent::ShouldDeadletter("default", failed_message()),
             },
             StateTest {
                 from: WorkerState::PostFailure(failed_message()),
@@ -462,12 +463,66 @@ mod test {
             StateTest {
                 from: WorkerState::PreShutdown(None),
                 to: WorkerState::Shutdown,
-                event: WorkerEvent::Shutdown
-            }
+                event: WorkerEvent::Shutdown,
+            },
         ];
 
         for StateTest { from, to, event } in transitions.into_iter() {
-            // assert_eq!(from.next(event), to);
+            assert_eq!(from.next(event), to);
         }
+    }
+
+    #[tokio::test]
+    async fn pre_execute_calls_middleware() {
+        let ctr = Arc::new(Mutex::new(0));
+
+        struct TestMiddleware(Arc<Mutex<usize>>);
+
+        #[async_trait]
+        impl IronworkerMiddleware for TestMiddleware {
+            async fn on_task_start(&self) {
+                let mut ctr = self.0.lock().await;
+                *ctr += 1;
+            }
+            async fn on_task_completion(&self) {
+                unimplemented!();
+            }
+            async fn on_task_failure(&self) {
+                unimplemented!();
+            }
+        }
+
+        let message = enqueued_successful_message();
+        let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
+        let worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
+        worker.pre_execute(&message).await;
+        assert_eq!(*ctr.lock().await, 1);
+    }
+
+    #[tokio::test]
+    async fn post_execute_calls_middleware() {
+        let ctr = Arc::new(Mutex::new(0));
+
+        struct TestMiddleware(Arc<Mutex<usize>>);
+
+        #[async_trait]
+        impl IronworkerMiddleware for TestMiddleware {
+            async fn on_task_start(&self) {
+                unimplemented!();
+            }
+            async fn on_task_completion(&self) {
+                let mut ctr = self.0.lock().await;
+                *ctr += 1;
+            }
+            async fn on_task_failure(&self) {
+                unimplemented!();
+            }
+        }
+
+        let message = enqueued_successful_message();
+        let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
+        let worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
+        worker.post_execute(&message).await;
+        assert_eq!(*ctr.lock().await, 1);
     }
 }

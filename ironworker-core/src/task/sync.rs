@@ -6,9 +6,9 @@ use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::message::{Message, SerializableMessage};
-use crate::{IntoTask, PerformableTask, Task, IronworkerError};
+use crate::{IntoTask, IronworkerError, PerformableTask, Task};
 
-use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
+use super::base::{SendSyncStatic, TaskError, TaskPayload, ThreadSafeBroker};
 use super::config::Config;
 use super::error::ErrorRetryConfiguration;
 use super::{ConfigurableTask, FunctionTask};
@@ -56,7 +56,7 @@ where
         &self,
         payload: SerializableMessage,
         _state: &Container![Send + Sync],
-    ) -> Result<(), (TypeId, Box<dyn TaskError>)> {
+    ) -> Result<(), Box<dyn TaskError>> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
         (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
     }
@@ -89,16 +89,13 @@ where
         self
     }
 
-    fn retry_on<E: TaskError>(mut self,  config: ErrorRetryConfiguration) -> Self {
-        self.config
-            .retry_on
-            .entry(TypeId::of::<E>())
-            .or_insert_with(|| config);
+    fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
+        todo!();
         self
     }
 
     fn discard_on<E: TaskError>(mut self) -> Self {
-        self.config.discard_on.insert(TypeId::of::<E>());
+        todo!();
         self
     }
 
@@ -172,6 +169,7 @@ macro_rules! impl_task_function {
 
         impl<T, F, Err, $($param),*> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
+
             Err: TaskError,
             T: TaskPayload,
             F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
@@ -183,12 +181,12 @@ macro_rules! impl_task_function {
             }
 
             fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
-                self.config.retry_on.entry(TypeId::of::<E>()).or_insert_with(|| config);
+                todo!();
                 self
             }
 
             fn discard_on<E: TaskError>(mut self) -> Self {
-                self.config.discard_on.insert(TypeId::of::<E>());
+                todo!();
                 self
             }
 
@@ -222,7 +220,7 @@ mod test {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    use crate::{broker::InProcessBroker, IronworkerApplicationBuilder, test::TestEnum};
+    use crate::{broker::InProcessBroker, test::TestEnum, IronworkerApplicationBuilder};
 
     use super::*;
 
@@ -231,12 +229,10 @@ mod test {
         let status_mock_called = Arc::new(AtomicBool::new(false));
         let inner = status_mock_called.clone();
 
-        let status_mock = Box::new(
-            move |_state: Message<u32>| -> Result<(), TestEnum> {
-                inner.store(true, std::sync::atomic::Ordering::Relaxed);
-                Ok(())
-            },
-        );
+        let status_mock = Box::new(move |_state: Message<u32>| -> Result<(), TestEnum> {
+            inner.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        });
 
         let payload: Message<u32> = 123.into();
         let _res = status_mock
