@@ -10,7 +10,10 @@ ironworker-redis = { path = "../ironworker-redis" }
 ironworker-core = { path = "../ironworker-core" }
 tokio = { version = "1", features = ["full"] }
 snafu = "0.7"
+redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }
+deadpool-redis = "0.10"
 
 [[bench]]
 name = "process_redis"
 harness = false
+deadpool-redis = "0.10"

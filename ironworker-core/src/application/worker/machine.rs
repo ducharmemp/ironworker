@@ -155,8 +155,9 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn execute(&self, mut message: SerializableMessage) -> WorkerEvent {
         let handler = self.shared_data.tasks.get(&message.task.as_str());
         let handler = handler.unwrap();
+        let max_run_time = handler.config().max_run_time;
         let task_future = timeout(
-            Duration::from_secs(30),
+            Duration::from_secs(max_run_time),
             handler.perform(message.clone(), &self.shared_data.state),
         );
 

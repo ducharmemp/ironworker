@@ -84,11 +84,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     my_complex_task
         .task()
-        .retry_on::<TestEnum>(ErrorRetryConfiguration::default().with_attempts(5))
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 
-    for _ in 0..5 {
+    for _ in 0..100_000 {
         my_panicking_task.task().perform_later(&app, 123).await?;
         my_task.task().perform_later(&app, 123).await?;
         my_async_task.task().perform_later(&app, 123).await?;
