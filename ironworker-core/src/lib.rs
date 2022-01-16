@@ -32,11 +32,53 @@ pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableT
 
 #[cfg(test)]
 pub(crate) mod test {
+    use chrono::Utc;
     use snafu::prelude::*;
+
+    use crate::{Task, SerializableMessage, Message, IntoTask, message::SerializableError};
 
     #[derive(Snafu, Debug)]
     pub enum TestEnum {
         #[snafu(display("The task failed"))]
         Failed,
+    }
+
+    pub fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
+        Box::new(t)
+    }
+
+    pub async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
+        Ok(())
+    }
+
+    pub async fn failed(_message: Message<u32>) -> Result<(), TestEnum> {
+        Err(TestEnum::Failed)
+    }
+
+    pub fn message(task: Box<dyn Task>) -> SerializableMessage {
+        SerializableMessage {
+            enqueued_at: Utc::now(),
+            queue: "default".to_string(),
+            job_id: "test-id".to_string(),
+            task: task.name().to_string(),
+            payload: 123.into(),
+            err: None,
+            retries: 0,
+            delivery_tag: None,
+        }
+    }
+
+    pub fn enqueued_successful_message() -> SerializableMessage {
+        message(boxed_task(successful.task()))
+    }
+
+    pub fn successful_message() -> SerializableMessage {
+        message(boxed_task(successful.task()))
+    }
+
+    pub fn failed_message() -> SerializableMessage {
+        let mut message = message(boxed_task(failed.task()));
+        message.err.replace(SerializableError::new(Box::new(TestEnum::Failed) as Box<_>));
+        message
     }
 }

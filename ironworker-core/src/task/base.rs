@@ -1,5 +1,3 @@
-use std::any::TypeId;
-use std::error::Error;
 use std::marker::PhantomData;
 use std::fmt::Debug;
 
@@ -37,7 +35,7 @@ pub trait Task: SendSyncStatic {
         &self,
         payload: SerializableMessage,
         state: &Container![Send + Sync],
-    ) -> Result<(), (TypeId, Box<dyn TaskError>)>;
+    ) -> Result<(), Box<dyn TaskError>>;
 }
 
 #[async_trait]
@@ -46,7 +44,7 @@ pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Tas
         &self,
         app: &IronworkerApplication<B>,
         payload: T,
-    ) -> Result<(), Box<dyn Error + Send>>;
+    ) -> Result<(), IronworkerError>;
 
     async fn perform_later<B: Broker + 'static>(
         &self,

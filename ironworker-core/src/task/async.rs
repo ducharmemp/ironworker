@@ -1,5 +1,3 @@
-use std::any::TypeId;
-use std::error::Error;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -10,7 +8,7 @@ use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::message::{Message, SerializableMessage};
-use crate::{ConfigurableTask, IntoTask, PerformableTask, Task};
+use crate::{ConfigurableTask, IntoTask, PerformableTask, Task, IronworkerError};
 
 use super::base::{TaskError, TaskPayload, SendSyncStatic, ThreadSafeBroker};
 use super::config::Config;
@@ -62,9 +60,9 @@ where
         &self,
         payload: SerializableMessage,
         _state: &Container![Send + Sync],
-    ) -> Result<(), (TypeId, Box<dyn TaskError>)> {
+    ) -> Result<(), Box<dyn TaskError>> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).await.map_err(|e| (TypeId::of::<Err>(), Box::new(e) as Box<_>))
+        (self.func)(message).await.map_err(|e| Box::new(e) as Box<_>)
     }
 }
 
@@ -80,7 +78,7 @@ where
         &self,
         _app: &IronworkerApplication<B>,
         _payload: T,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) -> Result<(), IronworkerError> {
         // TODO: Need to fix this up, we need to have this go to a regular ol queue
         todo!();
     }
@@ -177,7 +175,7 @@ macro_rules! impl_async_task_function {
                 &self,
                 _app: &IronworkerApplication<B>,
                 _payload: T,
-            ) -> Result<(), Box<dyn Error + Send>> {
+            ) -> Result<(), IronworkerError> {
                 todo!();
             }
         }

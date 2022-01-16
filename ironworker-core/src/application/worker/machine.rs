@@ -9,11 +9,10 @@ use tracing::{debug, error, info};
 
 use crate::message::SerializableError;
 use crate::{Broker, SerializableMessage};
-use crate::task::TaskError;
 
 use super::super::shared::SharedData;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(crate) enum WorkerState {
     Initialize,
     WaitForTask,
@@ -21,7 +20,7 @@ pub(crate) enum WorkerState {
     PreExecute(SerializableMessage),
     Execute(SerializableMessage),
     PostExecute(SerializableMessage),
-    ExecuteFailed(TypeId, SerializableMessage),
+    ExecuteFailed(SerializableMessage),
     RetryTask(&'static str, SerializableMessage),
     DeadletterTask(&'static str, SerializableMessage),
     PostFailure(SerializableMessage),
@@ -29,7 +28,7 @@ pub(crate) enum WorkerState {
     Shutdown,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(crate) enum WorkerEvent {
     Initialized,
     TaskReceived(SerializableMessage),
@@ -39,7 +38,7 @@ pub(crate) enum WorkerEvent {
     PreExecuteCompleted,
     PreExecuteFailed,
     ExecuteCompleted,
-    ExecuteFailed(TypeId, SerializableMessage),
+    ExecuteFailed(SerializableMessage),
     ShouldRetry(&'static str, SerializableMessage),
     ShouldDeadletter(&'static str, SerializableMessage),
     PostExecuteCompleted,
@@ -67,8 +66,8 @@ impl WorkerState {
 
             // Task execution
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
-            (Self::Execute(_), WorkerEvent::ExecuteFailed(error_type_id, message)) => {
-                Self::ExecuteFailed(error_type_id, message)
+            (Self::Execute(_), WorkerEvent::ExecuteFailed(message)) => {
+                Self::ExecuteFailed(message)
             }
 
             // Post execution
@@ -80,10 +79,10 @@ impl WorkerState {
             | (Self::DeadletterTask(_, message), WorkerEvent::DeadletterCompleted) => {
                 Self::PostFailure(message)
             }
-            (Self::ExecuteFailed(_, _), WorkerEvent::ShouldRetry(queue, message)) => {
+            (Self::ExecuteFailed(_), WorkerEvent::ShouldRetry(queue, message)) => {
                 Self::RetryTask(queue, message)
             }
-            (Self::ExecuteFailed(_, _), WorkerEvent::ShouldDeadletter(queue, message)) => {
+            (Self::ExecuteFailed(_), WorkerEvent::ShouldDeadletter(queue, message)) => {
                 Self::DeadletterTask(queue, message)
             }
 
@@ -92,7 +91,7 @@ impl WorkerState {
             | (Self::Execute(message), WorkerEvent::ShouldShutdown)
             | (Self::PostExecute(message), WorkerEvent::ShouldShutdown)
             | (Self::PostFailure(message), WorkerEvent::ShouldShutdown)
-            | (Self::ExecuteFailed(_, message), WorkerEvent::ShouldShutdown) => {
+            | (Self::ExecuteFailed(message), WorkerEvent::ShouldShutdown) => {
                 Self::PreShutdown(Some(message))
             }
             (_, WorkerEvent::ShouldShutdown) => Self::PreShutdown(None),
@@ -168,15 +167,14 @@ impl<B: Broker> WorkerStateMachine<B> {
             Ok(task_result) => {
                 if let Err((error_type_id, err)) = task_result {
                     message.err.replace(SerializableError::new(err));
-                    WorkerEvent::ExecuteFailed(error_type_id, message)
+                    WorkerEvent::ExecuteFailed(message)
                 } else {
                     WorkerEvent::ExecuteCompleted
                 }
             }
             Err(e) => {
-                let type_id = e.type_id();
                 message.err.replace(SerializableError::new(Box::new(e) as Box<_>));
-                WorkerEvent::ExecuteFailed(type_id, message)
+                WorkerEvent::ExecuteFailed(message)
             },
         }
     }
@@ -195,7 +193,6 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn execute_failed(
         &self,
-        error_type_id: &TypeId,
         message: &SerializableMessage,
     ) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
@@ -232,6 +229,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn retry_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
+        debug!(id=?self.id, "Marking job {} for retry", message.job_id);
         self.shared_data
             .broker
             .enqueue(queue, message.clone())
@@ -263,7 +261,7 @@ impl<B: Broker> WorkerStateMachine<B> {
             WorkerState::PreExecute(message) => self.pre_execute(message).await,
             WorkerState::Execute(message) => self.execute(message.clone()).await,
             WorkerState::PostExecute(message) => self.post_execute(message).await,
-            WorkerState::ExecuteFailed(message, error) => self.execute_failed(message, error).await,
+            WorkerState::ExecuteFailed(message) => self.execute_failed(message).await,
             WorkerState::RetryTask(queue, message) => self.retry_task(queue, message).await,
             WorkerState::DeadletterTask(queue, message) => {
                 self.deadletter_task(queue, message).await
@@ -301,31 +299,26 @@ impl<B: Broker> WorkerStateMachine<B> {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, error::Error};
+    use std::{collections::HashMap};
 
-    use chrono::Utc;
     use snafu::Snafu;
     use tokio::time::{self, sleep};
 
     use crate::{broker::InProcessBroker, ConfigurableTask, IntoTask, Message, Task};
+    use crate::test::{successful, failed, successful_message, failed_message, boxed_task, enqueued_successful_message};
 
     use super::*;
 
-    fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
-        Box::new(t)
-    }
-
-    fn default_message(task: Box<dyn Task>) -> SerializableMessage {
-        SerializableMessage {
-            enqueued_at: Utc::now(),
-            queue: "default".to_string(),
-            job_id: "test-id".to_string(),
-            task: task.name().to_string(),
-            payload: 123.into(),
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-        }
+    fn shared_context() -> Arc<SharedData<InProcessBroker>> {
+        Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([
+                (successful.task().name(), boxed_task(successful.task())),
+                (failed.task().name(), boxed_task(failed.task()))
+            ]),
+            state: Default::default(),
+        })
     }
 
     async fn crank_until<B: Broker>(
@@ -347,20 +340,10 @@ mod test {
 
     #[tokio::test]
     async fn wait_for_task_dequeues_a_message() {
-        async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
-            Ok(())
-        }
-
         time::pause();
 
-        let message = default_message(boxed_task(successful.task()));
-
-        let shared = Arc::new(SharedData {
-            broker: InProcessBroker::default(),
-            middleware: Default::default(),
-            tasks: HashMap::from_iter([(successful.task().name(), boxed_task(successful.task()))]),
-            state: Default::default(),
-        });
+        let message = enqueued_successful_message();
+        let shared = shared_context();
 
         shared
             .broker
@@ -370,7 +353,7 @@ mod test {
 
         let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
         let event = worker.wait_for_task().await;
-        // assert_eq!(event, WorkerEvent::TaskReceived(message));
+        assert_eq!(event, WorkerEvent::TaskReceived(message));
     }
 
     #[tokio::test]
@@ -379,10 +362,6 @@ mod test {
             from: WorkerState,
             to: WorkerState,
             event: WorkerEvent,
-        }
-
-        async fn task(_message: Message<u32>) -> Result<(), TestEnum> {
-            Ok(())
         }
 
         // More of a sanity check so we don't accidentally nuke a state transition
@@ -394,8 +373,8 @@ mod test {
             },
             StateTest {
                 from: WorkerState::WaitForTask,
-                to: WorkerState::PreExecute(default_message(boxed_task(task.task()))),
-                event: WorkerEvent::TaskReceived(default_message(boxed_task(task.task()))),
+                to: WorkerState::PreExecute(enqueued_successful_message()),
+                event: WorkerEvent::TaskReceived(enqueued_successful_message()),
             },
             StateTest {
                 from: WorkerState::WaitForTask,
@@ -413,68 +392,65 @@ mod test {
                 event: WorkerEvent::HeartBeatCompleted,
             },
             StateTest {
-                from: WorkerState::PreExecute(default_message(boxed_task(task.task()))),
-                to: WorkerState::Execute(default_message(boxed_task(task.task()))),
+                from: WorkerState::PreExecute(enqueued_successful_message()),
+                to: WorkerState::Execute(enqueued_successful_message()),
                 event: WorkerEvent::PreExecuteCompleted,
             },
             StateTest {
-                from: WorkerState::Execute(default_message(boxed_task(task.task()))),
-                to: WorkerState::PostExecute(default_message(boxed_task(task.task()))),
+                from: WorkerState::Execute(enqueued_successful_message()),
+                to: WorkerState::PostExecute(enqueued_successful_message()),
                 event: WorkerEvent::ExecuteCompleted,
             },
             StateTest {
-                from: WorkerState::Execute(default_message(boxed_task(task.task()))),
+                from: WorkerState::Execute(enqueued_successful_message()),
                 to: WorkerState::ExecuteFailed(
-                    default_message(boxed_task(task.task())),
-                    TestEnum::Failed.into(),
+                    failed_message(),
                 ),
-                event: WorkerEvent::ExecuteFailed(TestEnum::Failed.into()),
+                event: WorkerEvent::ExecuteFailed(failed_message()),
             },
             StateTest {
-                from: WorkerState::PostExecute(default_message(boxed_task(task.task()))),
+                from: WorkerState::PostExecute(successful_message()),
                 to: WorkerState::WaitForTask,
                 event: WorkerEvent::PostExecuteCompleted,
             },
             StateTest {
-                from: WorkerState::RetryTask("default", default_message(boxed_task(task.task()))),
-                to: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
+                from: WorkerState::RetryTask("default", successful_message()),
+                to: WorkerState::PostFailure(failed_message()),
                 event: WorkerEvent::RetryCompleted,
             },
             StateTest {
                 from: WorkerState::DeadletterTask(
                     "default",
-                    default_message(boxed_task(task.task())),
+                    failed_message(),
                 ),
-                to: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
+                to: WorkerState::PostFailure(failed_message()),
                 event: WorkerEvent::DeadletterCompleted,
             },
             StateTest {
                 from: WorkerState::ExecuteFailed(
-                    default_message(boxed_task(task.task())),
-                    TestEnum::Failed.into(),
+                    failed_message(),
                 ),
-                to: WorkerState::RetryTask("default", default_message(boxed_task(task.task()))),
+                to: WorkerState::RetryTask("default", failed_message()),
                 event: WorkerEvent::ShouldRetry(
                     "default",
-                    default_message(boxed_task(task.task())),
+                    failed_message(),
                 ),
             },
             StateTest {
                 from: WorkerState::ExecuteFailed(
-                    default_message(boxed_task(task.task())),
-                    TestEnum::Failed.into(),
+                    failed_message(),
                 ),
                 to: WorkerState::DeadletterTask(
                     "default",
-                    default_message(boxed_task(task.task())),
+                    failed_message(),
                 ),
                 event: WorkerEvent::ShouldDeadletter(
                     "default",
-                    default_message(boxed_task(task.task())),
+                    failed_message(),
                 ),
             },
             StateTest {
-                from: WorkerState::PostFailure(default_message(boxed_task(task.task()))),
+                from: WorkerState::PostFailure(failed_message()),
                 to: WorkerState::WaitForTask,
                 event: WorkerEvent::PostFailureCompleted,
             },

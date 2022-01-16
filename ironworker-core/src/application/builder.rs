@@ -90,8 +90,6 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
 
 #[cfg(test)]
 mod test {
-    use std::error::Error;
-
     use crate::{broker::InProcessBroker, IntoTask, Message, test::TestEnum};
 
     use super::*;
