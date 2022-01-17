@@ -4,9 +4,11 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::from_value;
+use snafu::ResultExt;
 use state::Container;
 
 use crate::application::IronworkerApplication;
+use crate::error::PerformNowSnafu;
 use crate::message::{Message, SerializableMessage};
 use crate::{ConfigurableTask, IntoTask, IronworkerError, PerformableTask, Task};
 
@@ -80,11 +82,16 @@ where
 {
     async fn perform_now<B: ThreadSafeBroker>(
         &self,
-        _app: &IronworkerApplication<B>,
-        _payload: T,
+        app: &IronworkerApplication<B>,
+        payload: T,
     ) -> Result<(), IronworkerError> {
-        // TODO: Need to fix this up, we need to have this go to a regular ol queue
-        todo!();
+        let message: Message<T> = payload.into();
+        self.perform(
+            SerializableMessage::from_message(self.name(), "inline", message),
+            &app.shared_data.state,
+        )
+        .await
+        .context(PerformNowSnafu {})
     }
 }
 
@@ -164,10 +171,11 @@ macro_rules! impl_async_task_function {
         {
             async fn perform_now<B: ThreadSafeBroker>(
                 &self,
-                _app: &IronworkerApplication<B>,
-                _payload: T,
+                app: &IronworkerApplication<B>,
+                payload: T,
             ) -> Result<(), IronworkerError> {
-                todo!();
+                let message: Message<T> = payload.into();
+                self.perform(SerializableMessage::from_message(self.name(), "inline", message), &app.shared_data.state).await.context( PerformNowSnafu {})
             }
         }
 

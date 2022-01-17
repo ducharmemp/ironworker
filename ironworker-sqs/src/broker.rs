@@ -22,8 +22,7 @@ impl SqsBroker {
         Self { client }
     }
 
-    pub async fn from_builder(builder: Builder) -> SqsBroker {
-        let client = Client::from_conf(builder.build());
+    pub fn from_client(client: Client) -> Self {
         Self { client }
     }
 }

@@ -1,6 +1,6 @@
 #![deny(clippy::all)]
 use async_trait::async_trait;
-use aws_sdk_sqs::Endpoint;
+use aws_sdk_sqs::{Client, Endpoint};
 use ironworker_core::{
     ConfigurableTask, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
     PerformableTask,
@@ -72,9 +72,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sqs_config_builder = sqs_config_builder.endpoint_resolver(Endpoint::immutable(
         http::Uri::from_static("http://localhost:9324"),
     ));
+    let client = Client::from_conf(sqs_config_builder.build());
 
     let app = IronworkerApplicationBuilder::default()
-        .broker(SqsBroker::from_builder(sqs_config_builder).await)
+        .broker(SqsBroker::from_client(client))
         .register_task(my_task.task().queue_as("fake").retries(2))
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))

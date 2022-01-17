@@ -1,5 +1,5 @@
-use testcontainers::{Container, Docker, Image, WaitForMessage};
 use std::collections::HashMap;
+use testcontainers::{Container, Docker, Image, WaitForMessage};
 
 const CONTAINER_IDENTIFIER: &str = "roribio16/alpine-sqs";
 const DEFAULT_TAG: &str = "1.2.0";
