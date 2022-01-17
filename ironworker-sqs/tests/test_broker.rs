@@ -23,16 +23,9 @@ async fn test_enqueue() {
             .unwrap(),
     ));
     let config = sqs_config_builder.build();
-    let queue = "test_enqueue";
+    let queue = "default";
 
     let client = Client::from_conf(config);
-    client
-        .create_queue()
-        .queue_name(queue)
-        .send()
-        .await
-        .unwrap();
-
     let broker = SqsBroker::from_client(client.clone());
 
     broker
@@ -66,16 +59,9 @@ async fn test_dequeue() {
             .unwrap(),
     ));
     let config = sqs_config_builder.build();
-    let queue = "test_dequeue";
+    let queue = "default";
 
     let client = Client::from_conf(config);
-    client
-        .create_queue()
-        .queue_name(queue)
-        .send()
-        .await
-        .unwrap();
-
     let broker = SqsBroker::from_client(client.clone());
 
     let enqueued_message = SerializableMessage {
@@ -118,16 +104,9 @@ async fn test_dequeue_no_message() {
             .unwrap(),
     ));
     let config = sqs_config_builder.build();
-    let queue = "test_dequeue_no_message";
+    let queue = "default";
 
     let client = Client::from_conf(config);
-    client
-        .create_queue()
-        .queue_name(queue)
-        .send()
-        .await
-        .unwrap();
-
     let broker = SqsBroker::from_client(client.clone());
 
     let message = broker.dequeue(queue).await;
