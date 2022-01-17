@@ -45,8 +45,9 @@ impl Image for Sqs {
         container
             .logs()
             .stdout
-            .wait_for_message("listening on port 9325")
+            .wait_for_message("ElasticMQ server")
             .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1000)); // Give some more time for the server to boot
     }
 
     fn args(&self) -> <Self as Image>::Args {
