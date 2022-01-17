@@ -74,7 +74,7 @@ pub(crate) mod test {
 
     pub fn message(task: Box<dyn Task>) -> SerializableMessage {
         SerializableMessage {
-            enqueued_at: Utc::now().trunc_subsecs(2), // Force the resolution to be lower for testing so equality checks will "work"
+            enqueued_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
             job_id: "test-id".to_string(),
             task: task.name().to_string(),
