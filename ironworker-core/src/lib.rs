@@ -1,5 +1,20 @@
 #![forbid(unsafe_code)]
-#![deny(clippy::all, clippy::cargo, nonstandard_style, rust_2018_idioms)]
+#![deny(
+    clippy::all,
+    clippy::cargo,
+    nonstandard_style,
+    rust_2018_idioms,
+    clippy::dbg_macro,
+    clippy::todo,
+    clippy::empty_enum,
+    clippy::enum_glob_use,
+    clippy::inefficient_to_string,
+    clippy::option_option,
+    clippy::unnested_or_patterns,
+    clippy::needless_continue,
+    clippy::needless_borrow,
+    private_in_public
+)]
 #![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
     deprecated_in_future,
@@ -11,6 +26,8 @@
     unused_labels,
     unused_lifetimes,
     unused_qualifications,
+    future_incompatible,
+    nonstandard_style,
     // unused_results,
 )]
 

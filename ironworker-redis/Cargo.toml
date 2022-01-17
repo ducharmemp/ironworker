@@ -23,3 +23,6 @@ uuid = { version = "0.8", features = ["v4"] }
 chrono = { version = "0.4", features = [ "serde" ] }
 futures = "0.3"
 deadpool-redis = "0.10"
+
+[dev-dependencies]
+testcontainers = "0.12.0"

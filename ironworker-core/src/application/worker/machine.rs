@@ -84,13 +84,14 @@ impl WorkerState {
             }
 
             // Worker told to stop
-            (Self::PreExecute(message), WorkerEvent::ShouldShutdown)
-            | (Self::Execute(message), WorkerEvent::ShouldShutdown)
-            | (Self::PostExecute(message), WorkerEvent::ShouldShutdown)
-            | (Self::PostFailure(message), WorkerEvent::ShouldShutdown)
-            | (Self::ExecuteFailed(message), WorkerEvent::ShouldShutdown) => {
-                Self::PreShutdown(Some(message))
-            }
+            (
+                Self::PreExecute(message)
+                | Self::Execute(message)
+                | Self::PostExecute(message)
+                | Self::PostFailure(message)
+                | Self::ExecuteFailed(message),
+                WorkerEvent::ShouldShutdown,
+            ) => Self::PreShutdown(Some(message)),
             (_, WorkerEvent::ShouldShutdown) => Self::PreShutdown(None),
             (_, WorkerEvent::Shutdown) => Self::Shutdown,
             _ => unimplemented!(),

@@ -80,7 +80,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
                 let worker_count = self
                     .config
                     .queues
-                    .get(&queue.to_string())
+                    .get(&(*queue).to_string())
                     .map(|queue| queue.concurrency)
                     .unwrap_or(default_count);
 
