@@ -2,8 +2,8 @@
 use async_trait::async_trait;
 use aws_sdk_sqs::Endpoint;
 use ironworker_core::{
-    ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder,
-    IronworkerMiddleware, Message, PerformableTask,
+    ConfigurableTask, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
+    PerformableTask,
 };
 use ironworker_sqs::SqsBroker;
 use serde::{Deserialize, Serialize};
@@ -92,7 +92,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     my_complex_task
         .task()
-        .retry_on::<TestEnum>(ErrorRetryConfiguration::default().with_attempts(5))
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 

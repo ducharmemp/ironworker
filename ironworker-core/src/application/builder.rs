@@ -11,6 +11,7 @@ use crate::{Broker, IronworkerApplication, Task};
 
 use super::shared::SharedData;
 
+#[allow(missing_debug_implementations)]
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,

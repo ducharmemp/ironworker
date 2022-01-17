@@ -3,18 +3,20 @@ use chrono::{DateTime, Utc};
 
 use crate::{Broker, IronworkerApplication};
 
+#[derive(Debug)]
 pub struct WorkerInfo {
     pub name: String,
     pub queue: Option<String>,
     pub last_seen_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug)]
 pub struct QueueInfo {
     pub name: String,
     pub size: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Stats {
     pub processed: usize,
     pub failed: usize,
@@ -22,10 +24,10 @@ pub struct Stats {
     pub enqueued: usize,
 }
 
-#[allow(missing_copy_implementations)]
+#[allow(missing_copy_implementations, missing_debug_implementations)]
 pub struct DeadletteredInfo {}
 
-#[allow(missing_copy_implementations)]
+#[allow(missing_copy_implementations, missing_debug_implementations)]
 pub struct ScheduledInfo {}
 
 #[async_trait]

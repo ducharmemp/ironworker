@@ -184,10 +184,14 @@ impl<B: Broker> WorkerStateMachine<B> {
         for middleware in self.shared_data.middleware.iter() {
             middleware.on_task_completion().await;
         }
-        self.shared_data
+        if let Err(broker_error) = self
+            .shared_data
             .broker
             .acknowledge_processed(self.queue, message.clone())
-            .await;
+            .await
+        {
+            error!(id=?self.id, "Acknowledging job failed, {:?}", broker_error);
+        }
         WorkerEvent::PostExecuteCompleted
     }
 
@@ -200,16 +204,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         let retries = handler_config.retries;
         let should_discard = false;
         let queue = handler_config.queue;
-        // let retry_on_config = handler_config
-        //     .retry_on
-        //     .get(error_type_id)
-        //     .cloned()
-        //     .unwrap_or_default();
-        // let queue = retry_on_config.queue.unwrap_or(handler_config.queue);
-        // let retries = retry_on_config.attempts.unwrap_or(handler_config.retries);
-        // let should_discard = handler_config.discard_on.contains(error_type_id);
 
-        // message.err = Some(error.into());
         if message.retries < retries && !should_discard {
             message.retries += 1;
             WorkerEvent::ShouldRetry(queue, message)
@@ -230,32 +225,44 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn retry_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Marking job {} for retry", message.job_id);
-        self.shared_data
+        if let Err(broker_error) = self
+            .shared_data
             .broker
             .enqueue(queue, message.clone())
-            .await;
+            .await
+        {
+            error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+        }
         WorkerEvent::RetryCompleted
     }
 
     async fn deadletter_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
         // TODO: Remove these clones
-        self.shared_data
+        if let Err(broker_error) = self
+            .shared_data
             .broker
             .deadletter(queue, message.clone())
-            .await;
+            .await
+        {
+            error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+        }
         WorkerEvent::DeadletterCompleted
     }
 
     async fn step(&mut self) -> WorkerEvent {
         match &self.state {
             WorkerState::Initialize => {
-                self.shared_data.broker.heartbeat(&self.id).await;
+                if let Err(broker_error) = self.shared_data.broker.heartbeat(&self.id).await {
+                    error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+                }
                 WorkerEvent::Initialized
             }
             WorkerState::WaitForTask => self.wait_for_task().await,
             WorkerState::HeartBeat => {
                 debug!(id=?self.id, "Emitting heartbeat");
-                self.shared_data.broker.heartbeat(&self.id).await;
+                if let Err(broker_error) = self.shared_data.broker.heartbeat(&self.id).await {
+                    error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+                }
                 WorkerEvent::HeartBeatCompleted
             }
             WorkerState::PreExecute(message) => self.pre_execute(message).await,
@@ -304,14 +311,14 @@ mod test {
     use async_trait::async_trait;
     use snafu::Snafu;
     use tokio::sync::Mutex;
-    use tokio::time::{self, sleep};
+    use tokio::time::{self};
 
     use crate::test::{
         boxed_task, enqueued_successful_message, failed, failed_message, successful,
         successful_message,
     };
     use crate::IronworkerMiddleware;
-    use crate::{broker::InProcessBroker, ConfigurableTask, IntoTask, Message, Task};
+    use crate::{broker::InProcessBroker, IntoTask, Task};
 
     use super::*;
 
@@ -339,17 +346,6 @@ mod test {
             ]),
             state: Default::default(),
         })
-    }
-
-    async fn crank_until<B: Broker>(
-        mut worker: WorkerStateMachine<B>,
-        wait_for: WorkerState,
-    ) -> WorkerStateMachine<B> {
-        while worker.state != wait_for {
-            let event = worker.step().await;
-            worker.state = worker.state.next(event);
-        }
-        worker
     }
 
     #[derive(Snafu, Debug)]

@@ -4,7 +4,7 @@
 #![warn(
     deprecated_in_future,
     missing_copy_implementations,
-    // missing_debug_implementations,
+    missing_debug_implementations,
     // missing_docs,
     // unreachable_pub,
     unused_import_braces,
@@ -28,7 +28,7 @@ pub use broker::{Broker, BrokerConfig, HeartbeatStrategy, InProcessBroker, Retry
 pub use error::{IronworkerError, IronworkerResult};
 pub use message::{Message, SerializableMessage};
 pub use middleware::IronworkerMiddleware;
-pub use task::{ConfigurableTask, ErrorRetryConfiguration, IntoTask, PerformableTask, Task};
+pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
 
 #[cfg(test)]
 pub(crate) mod test {

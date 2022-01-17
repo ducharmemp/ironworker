@@ -12,7 +12,6 @@ use crate::message::{Message, SerializableMessage};
 use crate::IronworkerError;
 
 use super::config::Config;
-use super::error::ErrorRetryConfiguration;
 
 macro_rules! auxiliary_trait{
     ($traitname: ident, $($t:tt)*) => {
@@ -67,6 +66,7 @@ pub trait IntoTask<Params> {
     fn task(self) -> Self::Task;
 }
 
+#[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
 pub struct AlreadyWasTask;
 
@@ -78,6 +78,7 @@ impl<Tsk: Task> IntoTask<AlreadyWasTask> for Tsk {
     }
 }
 
+#[allow(missing_debug_implementations)]
 pub struct FunctionTask<Marker, F> {
     pub(crate) func: F,
     pub(crate) marker: PhantomData<fn() -> Marker>,
@@ -87,10 +88,6 @@ pub struct FunctionTask<Marker, F> {
 pub trait ConfigurableTask: Task {
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
-    #[must_use]
-    fn retry_on<E: TaskError>(self, config: ErrorRetryConfiguration) -> Self;
-    #[must_use]
-    fn discard_on<E: TaskError>(self) -> Self;
     #[must_use]
     fn retries(self, count: usize) -> Self;
 }

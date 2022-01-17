@@ -10,11 +10,13 @@ use crate::{IntoTask, IronworkerError, PerformableTask, Task};
 
 use super::base::{SendSyncStatic, TaskError, TaskPayload, ThreadSafeBroker};
 use super::config::Config;
-use super::error::ErrorRetryConfiguration;
 use super::{ConfigurableTask, FunctionTask};
 
+#[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
 pub struct IsFunctionSystem;
+
+#[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
 pub struct FunctionMarker;
 
@@ -86,16 +88,6 @@ where
 {
     fn queue_as(mut self, queue_name: &'static str) -> Self {
         self.config.queue = queue_name;
-        self
-    }
-
-    fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
-        todo!();
-        self
-    }
-
-    fn discard_on<E: TaskError>(mut self) -> Self {
-        todo!();
         self
     }
 
@@ -177,16 +169,6 @@ macro_rules! impl_task_function {
         {
             fn queue_as(mut self, queue_name: &'static str) -> Self {
                 self.config.queue = queue_name;
-                self
-            }
-
-            fn retry_on<E: TaskError>(mut self, config: ErrorRetryConfiguration) -> Self {
-                todo!();
-                self
-            }
-
-            fn discard_on<E: TaskError>(mut self) -> Self {
-                todo!();
                 self
             }
 

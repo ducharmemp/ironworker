@@ -94,7 +94,11 @@ async fn list(
         text: "This is a test".to_string(),
         title: "Test title".to_string(),
     };
-    create_posts.task().perform_later(ironworker, p).await;
+    create_posts
+        .task()
+        .perform_later(ironworker, p)
+        .await
+        .unwrap();
 
     Ok(Json(ids))
 }

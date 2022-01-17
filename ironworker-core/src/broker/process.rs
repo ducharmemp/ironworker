@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 use crate::{Broker, SerializableMessage};
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InProcessBroker {
     pub queues: Mutex<HashMap<String, VecDeque<SerializableMessage>>>,
     pub deadletter: Mutex<HashMap<String, SerializableMessage>>,

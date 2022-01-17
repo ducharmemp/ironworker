@@ -1,8 +1,8 @@
 #![deny(clippy::all)]
 use async_trait::async_trait;
 use ironworker_core::{
-    ConfigurableTask, ErrorRetryConfiguration, IntoTask, IronworkerApplicationBuilder,
-    IronworkerMiddleware, Message, PerformableTask,
+    ConfigurableTask, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
+    PerformableTask,
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};

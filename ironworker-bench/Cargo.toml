@@ -16,4 +16,3 @@ deadpool-redis = "0.10"
 [[bench]]
 name = "process_redis"
 harness = false
-deadpool-redis = "0.10"

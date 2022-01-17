@@ -19,6 +19,7 @@ pub use builder::IronworkerApplicationBuilder;
 use shared::SharedData;
 use worker::IronWorkerPool;
 
+#[allow(missing_debug_implementations)]
 /// The main handle that coordinates workers, tasks, and configuration in order to drive a set of async queues.
 pub struct IronworkerApplication<B: Broker> {
     pub(crate) id: String,
