@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use testcontainers::{Container, Docker, Image, WaitForMessage};
 
-const CONTAINER_IDENTIFIER: &str = "roribio16/alpine-sqs";
+const CONTAINER_IDENTIFIER: &str = "softwaremill/elasticmq-native";
 const DEFAULT_TAG: &str = "1.2.0";
 
 #[derive(Debug, Default, Clone)]
@@ -47,7 +47,6 @@ impl Image for Sqs {
             .stdout
             .wait_for_message("ElasticMQ server")
             .unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(1000)); // Give some more time for the server to boot
     }
 
     fn args(&self) -> <Self as Image>::Args {
