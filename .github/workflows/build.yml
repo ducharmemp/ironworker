@@ -24,7 +24,7 @@ jobs:
       - run: exit 0
 
   test:
-    name: ":hear_no_evil: Test ${{ matrix.rust }}"
+    name: "🙉 Test ${{ matrix.rust }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -52,7 +52,7 @@ jobs:
         with:
           command: test
   rustfmt-and-clippy:
-    name: ":see_no_evil: Check linting and run clippy"
+    name: "🙈 Check linting and run clippy"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -80,7 +80,7 @@ jobs:
           command: fmt
           args: -- --check
   doc:
-    name: ":speak_no_evil: Run docs"
+    name: "🙊 Run docs"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
