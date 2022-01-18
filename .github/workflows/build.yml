@@ -4,15 +4,28 @@ concurrency:
   group: build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+  # These are for the AWS SDK to be able to connect to ElasticMQ locally
+  AWS_DEFAULT_REGION: local
+  AWS_ACCESS_KEY_ID: fake
+  AWS_SECRET_ACCESS_KEY: fake
+
 jobs:
-  ci:
-    name: "Test ${{ matrix.rust }}"
+  tests-pass:
+    name: Checks complete
     runs-on: ubuntu-latest
-    env:
-      # These are for the SDK to be able to connect to roribio16/alpine-sqs
-      AWS_DEFAULT_REGION: local
-      AWS_ACCESS_KEY_ID: fake
-      AWS_SECRET_ACCESS_KEY: fake
+    needs:
+      - test
+      - rustfmt-and-clippy
+      - doc
+    steps:
+      - run: exit 0
+
+  test:
+    name: ":hear_no_evil: Test ${{ matrix.rust }}"
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -21,13 +34,41 @@ jobs:
           - beta
           - nightly
     steps:
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.backend }}-cargo-${{ hashFiles('**/Cargo.toml') }}
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         name: "Install ${{matrix.rust}}"
         with:
-            toolchain: ${{matrix.rust}}
-            override: true
-            components: clippy, rustfmt
+          toolchain: ${{matrix.rust}}
+          override: true
+          profile: minimal
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+  rustfmt-and-clippy:
+    name: ":see_no_evil: Check linting and run clippy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.51.0
+          profile: minimal
+          components: clippy, rustfmt
+          override: true
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: clippy-cargo-${{ hashFiles('**/Cargo.toml') }}
       - uses: actions-rs/clippy-check@v1
         if: ${{matrix.rust == 'stable'}}
         with:
@@ -38,10 +79,25 @@ jobs:
         with:
           command: fmt
           args: -- --check
-      - uses: actions-rs/cargo@v1
+  doc:
+    name: ":speak_no_evil: Run docs"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
         with:
-          command: test
-      - uses: actions-rs/cargo@v1
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Cache cargo registry
+        uses: actions/cache@v2
         with:
-          command: build
-          args: --release --all-features
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: docs-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - name: "Cargo docs"
+        run: cargo doc --lib --no-deps --all-features --document-private-items
+        env:
+          RUSTFLAGS: --cfg docsrs
+          RUSTDOCFLAGS: --cfg docsrs -Dwarnings
