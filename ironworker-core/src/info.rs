@@ -39,6 +39,7 @@ pub trait ApplicationInfo {
     async fn scheduled(&self) -> Vec<ScheduledInfo>;
 }
 
+/// This trait allows a given broker to report metadata, usually to a frontend application of some kind.
 #[async_trait]
 pub trait BrokerInfo: Broker {
     async fn workers(&self) -> Vec<WorkerInfo>;

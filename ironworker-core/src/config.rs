@@ -4,14 +4,14 @@ use std::collections::HashMap;
 
 #[derive(Deserialize, Debug)]
 pub(crate) struct QueueConfig {
-    pub concurrency: usize,
+    pub(crate) concurrency: usize,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(default)]
 pub(crate) struct IronworkerConfig {
-    pub concurrency: usize,
-    pub queues: HashMap<String, QueueConfig>,
+    pub(crate) concurrency: usize,
+    pub(crate) queues: HashMap<String, QueueConfig>,
 }
 
 impl Default for IronworkerConfig {
@@ -24,7 +24,7 @@ impl Default for IronworkerConfig {
 }
 
 impl IronworkerConfig {
-    pub fn new() -> Result<Self, ConfigError> {
+    pub(crate) fn new() -> Result<Self, ConfigError> {
         let mut s = Config::default();
 
         s.merge(File::with_name("Ironworker").required(false))?;

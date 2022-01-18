@@ -13,7 +13,9 @@
     clippy::unnested_or_patterns,
     clippy::needless_continue,
     clippy::needless_borrow,
-    private_in_public
+    private_in_public,
+    unreachable_code,
+    unreachable_patterns,
 )]
 #![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
@@ -28,7 +30,6 @@
     unused_qualifications,
     future_incompatible,
     nonstandard_style,
-    // unused_results,
 )]
 
 mod application;
@@ -55,24 +56,24 @@ pub(crate) mod test {
     use crate::{message::SerializableError, IntoTask, Message, SerializableMessage, Task};
 
     #[derive(Snafu, Debug)]
-    pub enum TestEnum {
+    pub(crate) enum TestEnum {
         #[snafu(display("The task failed"))]
         Failed,
     }
 
-    pub fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
+    pub(crate) fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
         Box::new(t)
     }
 
-    pub async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
+    pub(crate) async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
         Ok(())
     }
 
-    pub async fn failed(_message: Message<u32>) -> Result<(), TestEnum> {
+    pub(crate) async fn failed(_message: Message<u32>) -> Result<(), TestEnum> {
         Err(TestEnum::Failed)
     }
 
-    pub fn message(task: Box<dyn Task>) -> SerializableMessage {
+    pub(crate) fn message(task: Box<dyn Task>) -> SerializableMessage {
         SerializableMessage {
             enqueued_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
@@ -85,15 +86,15 @@ pub(crate) mod test {
         }
     }
 
-    pub fn enqueued_successful_message() -> SerializableMessage {
+    pub(crate) fn enqueued_successful_message() -> SerializableMessage {
         message(boxed_task(successful.task()))
     }
 
-    pub fn successful_message() -> SerializableMessage {
+    pub(crate) fn successful_message() -> SerializableMessage {
         message(boxed_task(successful.task()))
     }
 
-    pub fn failed_message() -> SerializableMessage {
+    pub(crate) fn failed_message() -> SerializableMessage {
         let mut message = message(boxed_task(failed.task()));
         message
             .err
