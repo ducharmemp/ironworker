@@ -1,3 +1,6 @@
+[![Ironworker CI](https://github.com/ducharmemp/ironworker/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/ducharmemp/ironworker/actions/workflows/build.yml)
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
+
 ## License
 
 Ironworker is licensed under either of the following, at your option:

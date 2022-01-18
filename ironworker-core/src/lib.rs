@@ -1,3 +1,14 @@
+//! Async Job Queues for Rust Applications
+//! 
+//! This crate provides the core Ironworker application, the main driver behind enqueueing and running jobs in an asynchronous manner. This
+//! library is completely backend agnostic, and instead delegates the communication strategies to auxiliary crates. Ironworker is also focused
+//! on tight integration with existing web servers to provide seamless integration and ease of use.
+//! 
+//! # Overview
+//! 
+//! At its heart, an Ironworker application acts on messages pass from Producers, through a backing datastore, and onto Consumers. This approach
+//! to structuring applications has a long history, but at a high level this structure means that work can be offloaded from user-facing servers
+//! onto dedicated machines, providing scalability, reducing coupling, and greater durability of business level operations.
 #![forbid(unsafe_code)]
 #![deny(
     clippy::all,
