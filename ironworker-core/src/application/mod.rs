@@ -5,7 +5,8 @@ mod worker;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use futures::future::join_all;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use serde::Serialize;
 
 use tokio::select;
@@ -29,18 +30,7 @@ pub struct IronworkerApplication<B: Broker> {
     pub(crate) shared_data: Arc<SharedData<B>>,
 }
 
-impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
-    pub fn manage<T>(&self, state: T)
-    where
-        T: Send + Sync + 'static,
-    {
-        // let type_name = std::any::type_name::<T>();
-        if !self.shared_data.state.set(state) {
-            // error!("state for type '{}' is already being managed", type_name);
-            panic!("aborting due to duplicately managed state");
-        }
-    }
-
+impl<B: Broker + Send + 'static> IronworkerApplication<B> {
     /// Sends a signal to all worker pools to cease their processing. The user should `.await` the `work` function until all processing is done.
     /// Failing to do so could result in jobs being lost.
     pub fn shutdown(&self) {
@@ -54,8 +44,11 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
         payload: P,
     ) -> Result<(), IronworkerError> {
         let message: Message<P> = payload.into();
-        let handler = self.shared_data.tasks.get(task).unwrap();
-        let handler_config = handler.config();
+        let handler_config = {
+            let shared = self.shared_data.tasks.lock().await;
+            let handler = shared.get(task).unwrap();
+            handler.config()
+        };
 
         let serializable = SerializableMessage::from_message(task, handler_config.queue, message);
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
@@ -72,7 +65,7 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
 
-        let mut handles: Vec<_> = self
+        let handles: Vec<_> = self
             .queues
             .iter()
             .map(|queue| {
@@ -86,28 +79,41 @@ impl<B: Broker + Sync + Send + 'static> IronworkerApplication<B> {
 
                 let pool = IronWorkerPool::new(
                     self.id.clone(),
-                    <&str>::clone(queue),
+                    queue,
                     worker_count,
                     shutdown_tx.subscribe(),
                     self.shared_data.clone(),
                 );
 
-                tokio::task::spawn(async move { pool.work().await })
+                pool.work()
             })
             .collect();
+
+        let mut handles = FuturesUnordered::from_iter(handles.into_iter());
 
         select!(
             _ = self.notify_shutdown.notified() => {
                 shutdown_tx.send(()).expect("All workers have already been dropped");
-                join_all(&mut handles).await;
             },
-            _ = join_all(&mut handles) => {},
+            _ = handles.next() => {},
         );
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use crate::{
+        test::{assert_send, assert_sync},
+        InProcessBroker,
+    };
+
     #[tokio::test]
     async fn enqueuing_message_goes_to_broker() {}
+
+    #[test]
+    fn assertions() {
+        assert_send::<IronworkerApplication<InProcessBroker>>();
+        assert_sync::<IronworkerApplication<InProcessBroker>>();
+    }
 }

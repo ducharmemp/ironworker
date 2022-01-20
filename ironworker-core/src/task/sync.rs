@@ -3,16 +3,15 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use serde_json::from_value;
 use snafu::ResultExt;
-use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::error::PerformNowSnafu;
 use crate::message::{Message, SerializableMessage};
-use crate::{IntoTask, IronworkerError, PerformableTask, Task};
+use crate::{Broker, IntoTask, IronworkerError, Task};
 
-use super::base::{SendSyncStatic, TaskError, TaskPayload, ThreadSafeBroker};
+use super::base::{SendStatic, TaskError, TaskPayload};
 use super::config::Config;
-use super::{ConfigurableTask, FunctionTask};
+use super::FunctionTask;
 
 #[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
@@ -22,11 +21,11 @@ pub struct IsFunctionSystem;
 #[derive(Clone, Copy)]
 pub struct FunctionMarker;
 
-impl<T, F, Err> IntoTask<(IsFunctionSystem, FunctionMarker, T)> for F
+impl<T, F, Err> IntoTask<T, (IsFunctionSystem, FunctionMarker, T)> for F
 where
     Err: TaskError,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
+    F: Fn(Message<T>) -> Result<(), Err> + SendStatic + Clone,
 {
     type Task = FunctionTask<(FunctionMarker, T, Err), F>;
     fn task(self) -> Self::Task {
@@ -39,11 +38,11 @@ where
 }
 
 #[async_trait]
-impl<T, F, Err> Task for FunctionTask<(FunctionMarker, T, Err), F>
+impl<T, F, Err> Task<T> for FunctionTask<(FunctionMarker, T, Err), F>
 where
     Err: TaskError,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
+    F: Fn(Message<T>) -> Result<(), Err> + SendStatic + Clone,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -56,44 +55,17 @@ where
         &self.config
     }
 
-    async fn perform(
-        &self,
-        payload: SerializableMessage,
-        _state: &Container![Send + Sync],
-    ) -> Result<(), Box<dyn TaskError>> {
-        let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
-    }
-}
-
-#[async_trait]
-impl<T, F, Err> PerformableTask<T> for FunctionTask<(FunctionMarker, T, Err), F>
-where
-    Err: TaskError,
-    T: TaskPayload + Into<Message<T>>,
-    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
-{
-    async fn perform_now<B: ThreadSafeBroker>(
-        &self,
-        app: &IronworkerApplication<B>,
+    async fn perform_now<B: Broker>(
+        self,
+        _app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), IronworkerError> {
         let message: Message<T> = payload.into();
-        self.perform(
-            SerializableMessage::from_message(self.name(), "inline", message),
-            &app.shared_data.state,
-        )
-        .await
-        .context(PerformNowSnafu {})
+        let name = self.name();
+        let fut = self.perform(SerializableMessage::from_message(name, "inline", message));
+        fut.await.context(PerformNowSnafu {})
     }
-}
 
-impl<T, F, Err> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err), F>
-where
-    Err: TaskError,
-    T: TaskPayload,
-    F: Fn(Message<T>) -> Result<(), Err> + SendSyncStatic,
-{
     fn queue_as(mut self, queue_name: &'static str) -> Self {
         self.config.queue = queue_name;
         self
@@ -103,16 +75,21 @@ where
         self.config.retries = count;
         self
     }
+
+    async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+        let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
+        (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
+    }
 }
 
 macro_rules! impl_task_function {
     ($($param: ident),*) => {
-        impl<T, F, Err, $($param),*> IntoTask<(IsFunctionSystem, FunctionMarker, T, Err, $($param),*)> for F
+        impl<T, F, Err, $($param),*> IntoTask<T, (IsFunctionSystem, FunctionMarker, T, Err, $($param),*)> for F
         where
             Err: TaskError,
             T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
-            $($param: SendSyncStatic),*
+            F: Fn(Message<T>, $($param),*) -> Result<(), Err> + SendStatic + Clone,
+            $($param: SendStatic),*
         {
             type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -125,12 +102,12 @@ macro_rules! impl_task_function {
         }
 
         #[async_trait]
-        impl<T, F, Err, $($param),*> Task for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
+        impl<T, F, Err, $($param),*> Task<T> for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
             Err: TaskError,
             T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
-            $($param: SendSyncStatic),*
+            F: Fn(Message<T>, $($param),*) -> Result<(), Err> + SendStatic + Clone,
+            $($param: SendStatic),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -143,39 +120,16 @@ macro_rules! impl_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), Box<dyn TaskError>> {
-                let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).map_err(|e| Box::new(e) as Box<_>)
-            }
-        }
-
-        #[async_trait]
-        impl<T, F, Err, $($param),*> PerformableTask<T>
-            for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
-        where
-            Err: TaskError,
-            T: TaskPayload + Into<Message<T>>,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
-            $($param: SendSyncStatic),*
-        {
-            async fn perform_now<B: ThreadSafeBroker>(
-                &self,
+            async fn perform_now<B: Broker>(
+                self,
                 app: &IronworkerApplication<B>,
                 payload: T,
             ) -> Result<(), IronworkerError> {
-                let message: Message<T> = payload.into();
-                self.perform(SerializableMessage::from_message(self.name(), "inline", message), &app.shared_data.state).await.context( PerformNowSnafu {})
+                // let message: Message<T> = payload.into();
+                // self.perform(SerializableMessage::from_message(self.name(), "inline", message)).await.context( PerformNowSnafu {})
+                todo!()
             }
-        }
 
-        impl<T, F, Err, $($param),*> ConfigurableTask for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
-        where
-
-            Err: TaskError,
-            T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Result<(), Err> + SendSyncStatic,
-            $($param: SendSyncStatic),*
-        {
             fn queue_as(mut self, queue_name: &'static str) -> Self {
                 self.config.queue = queue_name;
                 self
@@ -184,6 +138,12 @@ macro_rules! impl_task_function {
             fn retries(mut self, count: usize) -> Self {
                 self.config.retries = count;
                 self
+            }
+
+            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+                // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
+                // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
+                todo!()
             }
         }
     };
@@ -228,10 +188,11 @@ mod test {
         let payload: Message<u32> = 123.into();
         let _res = status_mock
             .task()
-            .perform(
-                SerializableMessage::from_message("status_mock", "default", payload),
-                &Default::default(),
-            )
+            .perform(SerializableMessage::from_message(
+                "status_mock",
+                "default",
+                payload,
+            ))
             .await;
         assert!(status_mock_called.load(std::sync::atomic::Ordering::Relaxed))
     }

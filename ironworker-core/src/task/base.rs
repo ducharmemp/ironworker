@@ -4,7 +4,6 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use snafu::AsErrorSource;
-use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
@@ -12,6 +11,7 @@ use crate::message::{Message, SerializableMessage};
 use crate::IronworkerError;
 
 use super::config::Config;
+use super::IntoPerformableTask;
 
 macro_rules! auxiliary_trait{
     ($traitname: ident, $($t:tt)*) => {
@@ -25,43 +25,44 @@ auxiliary_trait!(
     TaskPayload,
     for<'de> Deserialize<'de> + Serialize + 'static + Send
 );
-auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
-auxiliary_trait!(ThreadSafeBroker, Broker + Send + Sync);
+auxiliary_trait!(SendStatic, Send + 'static);
 
 #[async_trait]
-pub trait Task: SendSyncStatic {
+pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
+    SendStatic + Sized + Clone
+{
     fn name(&self) -> &'static str;
     fn config(&self) -> &Config;
 
-    async fn perform(
-        &self,
-        payload: SerializableMessage,
-        state: &Container![Send + Sync],
-    ) -> Result<(), Box<dyn TaskError>>;
-}
+    #[must_use]
+    fn queue_as(self, queue_name: &'static str) -> Self;
+    #[must_use]
+    fn retries(self, count: usize) -> Self;
 
-#[async_trait]
-pub trait PerformableTask<T: Serialize + Send + Into<Message<T>> + 'static>: Task {
+    async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
+
     async fn perform_now<B: Broker + 'static>(
-        &self,
+        self,
         app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), IronworkerError>;
 
     async fn perform_later<B: Broker + 'static>(
-        &self,
+        self,
         app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), IronworkerError> {
-        app.enqueue(self.name(), payload).await
+        let fut = app.enqueue(self.name(), payload);
+        fut.await
+    }
+
+    fn into_performable_task(self) -> IntoPerformableTask<Self, T> {
+        IntoPerformableTask::new(self)
     }
 }
 
-// This trait has to be generic because we have potentially overlapping impls, in particular
-// because Rust thinks a type could impl multiple different `FnMut` combinations
-// even though none can currently
-pub trait IntoTask<Params> {
-    type Task: Task;
+pub trait IntoTask<T: Serialize + Send + Into<Message<T>> + 'static, Params> {
+    type Task: Task<T>;
 
     fn task(self) -> Self::Task;
 }
@@ -71,7 +72,9 @@ pub trait IntoTask<Params> {
 pub struct AlreadyWasTask;
 
 // Tasks implicitly implement IntoTask
-impl<Tsk: Task> IntoTask<AlreadyWasTask> for Tsk {
+impl<T: Serialize + Send + Into<Message<T>> + 'static, Tsk: Task<T>> IntoTask<T, AlreadyWasTask>
+    for Tsk
+{
     type Task = Tsk;
     fn task(self) -> Tsk {
         self
@@ -85,9 +88,12 @@ pub struct FunctionTask<Marker, F> {
     pub(crate) config: Config,
 }
 
-pub trait ConfigurableTask: Task {
-    #[must_use]
-    fn queue_as(self, queue_name: &'static str) -> Self;
-    #[must_use]
-    fn retries(self, count: usize) -> Self;
+impl<Marker, F: Clone> Clone for FunctionTask<Marker, F> {
+    fn clone(&self) -> FunctionTask<Marker, F> {
+        FunctionTask {
+            func: self.func.clone(),
+            marker: PhantomData,
+            config: self.config,
+        }
+    }
 }

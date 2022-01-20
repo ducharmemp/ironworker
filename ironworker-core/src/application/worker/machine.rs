@@ -94,7 +94,7 @@ impl WorkerState {
             ) => Self::PreShutdown(Some(message)),
             (_, WorkerEvent::ShouldShutdown) => Self::PreShutdown(None),
             (_, WorkerEvent::Shutdown) => Self::Shutdown,
-            _ => unimplemented!(),
+            state => unreachable!("{:?}", state),
         }
     }
 
@@ -143,7 +143,8 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn pre_execute(&self, message: &SerializableMessage) -> WorkerEvent {
-        if !self.shared_data.tasks.contains_key(&message.task.as_str()) {
+        let tasks = self.shared_data.tasks.lock().await;
+        if !tasks.contains_key(&message.task.as_str()) {
             return WorkerEvent::PreExecuteFailed;
         }
         debug!(id=?self.id, "Running pre-execution hooks");
@@ -154,12 +155,13 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn execute(&self, mut message: SerializableMessage) -> WorkerEvent {
-        let handler = self.shared_data.tasks.get(&message.task.as_str());
-        let handler = handler.unwrap();
+        let tasks = self.shared_data.tasks.lock().await;
+        let handler = tasks.get(&message.task.as_str());
+        let mut handler = handler.unwrap().clone_box();
         let max_run_time = handler.config().max_run_time;
         let task_future = timeout(
             Duration::from_secs(max_run_time),
-            handler.perform(message.clone(), &self.shared_data.state),
+            handler.perform(message.clone()),
         );
 
         match task_future.await {
@@ -199,7 +201,8 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn execute_failed(&self, message: &SerializableMessage) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let mut message = message.clone();
-        let handler = self.shared_data.tasks.get(&message.task.as_str());
+        let tasks = self.shared_data.tasks.lock().await;
+        let handler = tasks.get(&message.task.as_str());
         let handler = handler.unwrap();
         let handler_config = handler.config();
         let retries = handler_config.retries;
@@ -331,7 +334,6 @@ mod test {
                 (successful.task().name(), boxed_task(successful.task())),
                 (failed.task().name(), boxed_task(failed.task())),
             ]),
-            state: Default::default(),
         })
     }
 
@@ -345,7 +347,6 @@ mod test {
                 (successful.task().name(), boxed_task(successful.task())),
                 (failed.task().name(), boxed_task(failed.task())),
             ]),
-            state: Default::default(),
         })
     }
 

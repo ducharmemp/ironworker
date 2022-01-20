@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use ironworker_core::{
-    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, PerformableTask,
+    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, Task,
 };
 use ironworker_redis::RedisBroker;
 use ironworker_rocket::IronworkerFairing;

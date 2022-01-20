@@ -1,13 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use state::Container;
-use tokio::sync::Notify;
+use serde::Serialize;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 use crate::config::IronworkerConfig;
-use crate::IronworkerMiddleware;
-use crate::{Broker, IronworkerApplication, Task};
+use crate::task::PerformableTask;
+use crate::{Broker, IronworkerApplication};
+use crate::{IronworkerMiddleware, Message, Task};
 
 use super::shared::SharedData;
 
@@ -15,40 +16,29 @@ use super::shared::SharedData;
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
-    tasks: HashMap<&'static str, Box<dyn Task>>,
+    tasks: HashMap<&'static str, Box<dyn PerformableTask>>,
     middleware: Vec<Box<dyn IronworkerMiddleware>>,
     queues: HashSet<&'static str>,
-    state: Container![Send + Sync],
 }
 
 impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
     #[must_use = "An application must be built in order to use"]
-    pub fn register_task<T: Task + Send>(mut self, task: T) -> IronworkerApplicationBuilder<B> {
-        let task_config = task.config();
+    pub fn register_task<T: Serialize + Send + Into<Message<T>> + 'static, Tsk: Task<T> + Send>(
+        mut self,
+        task: Tsk,
+    ) -> IronworkerApplicationBuilder<B> {
+        let task_config = Task::config(&task);
         self.queues.insert(task_config.queue);
 
         self.tasks
             .entry(task.name())
-            .or_insert_with(|| Box::new(task));
+            .or_insert_with(|| Box::new(task.into_performable_task()) as Box<_>);
         self
     }
 
     #[must_use = "An application must be built in order to use"]
     pub fn broker(mut self, broker: B) -> IronworkerApplicationBuilder<B> {
         self.broker = Some(broker);
-        self
-    }
-
-    pub fn manage<T>(self, state: T) -> IronworkerApplicationBuilder<B>
-    where
-        T: Send + Sync + 'static,
-    {
-        // let type_name = std::any::type_name::<T>();
-        if !self.state.set(state) {
-            // error!("state for type '{}' is already being managed", type_name);
-            panic!("aborting due to duplicately managed state");
-        }
-
         self
     }
 
@@ -68,8 +58,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
             queues: self.queues,
             shared_data: Arc::new(SharedData {
                 broker: self.broker.expect("Expected a broker to be registered"),
-                tasks: self.tasks,
-                state: self.state,
+                tasks: Mutex::new(self.tasks),
                 middleware: self.middleware,
             }),
         }
@@ -84,7 +73,6 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
             middleware: Default::default(),
             tasks: HashMap::new(),
             queues: HashSet::new(),
-            state: Default::default(),
         }
     }
 }
@@ -117,13 +105,5 @@ mod test {
             .broker(InProcessBroker::default())
             .register_task(test_task.task());
         assert_eq!(builder.tasks.values().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn manage_registers_state() {
-        let builder = IronworkerApplicationBuilder::default()
-            .broker(InProcessBroker::default())
-            .manage(1_u32);
-        assert_eq!(builder.state.try_get::<u32>().unwrap(), &1);
     }
 }

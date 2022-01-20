@@ -1232,7 +1232,6 @@ dependencies = [
  "serde 1.0.132",
  "serde_json",
  "snafu",
- "state",
  "tokio",
  "tracing",
  "uuid",

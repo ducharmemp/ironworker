@@ -2,17 +2,16 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use serde::Serialize;
+
 use serde_json::from_value;
 use snafu::ResultExt;
-use state::Container;
 
 use crate::application::IronworkerApplication;
 use crate::error::PerformNowSnafu;
 use crate::message::{Message, SerializableMessage};
-use crate::{ConfigurableTask, IntoTask, IronworkerError, PerformableTask, Task};
+use crate::{Broker, IntoTask, IronworkerError, Task};
 
-use super::base::{SendSyncStatic, TaskError, TaskPayload, ThreadSafeBroker};
+use super::base::{SendStatic, TaskError, TaskPayload};
 use super::config::Config;
 use super::FunctionTask;
 
@@ -24,12 +23,12 @@ pub struct IsAsyncFunctionSystem;
 #[derive(Clone, Copy)]
 pub struct AsyncFunctionMarker;
 
-impl<T, F, Err, Fut> IntoTask<(IsAsyncFunctionSystem, AsyncFunctionMarker, T)> for F
+impl<T, F, Err, Fut> IntoTask<T, (IsAsyncFunctionSystem, AsyncFunctionMarker, T)> for F
 where
     Err: TaskError,
     Fut: Future<Output = Result<(), Err>> + Send,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Fut + SendSyncStatic,
+    F: Fn(Message<T>) -> Fut + SendStatic + Clone,
 {
     type Task = FunctionTask<(AsyncFunctionMarker, T), F>;
     fn task(self) -> Self::Task {
@@ -42,12 +41,12 @@ where
 }
 
 #[async_trait]
-impl<T, F, Err, Fut> Task for FunctionTask<(AsyncFunctionMarker, T), F>
+impl<T, F, Err, Fut> Task<T> for FunctionTask<(AsyncFunctionMarker, T), F>
 where
     Err: TaskError,
     Fut: Future<Output = Result<(), Err>> + Send,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Fut + SendSyncStatic,
+    F: Fn(Message<T>) -> Fut + SendStatic + Clone,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -60,48 +59,23 @@ where
         &self.config
     }
 
-    async fn perform(
-        &self,
-        payload: SerializableMessage,
-        _state: &Container![Send + Sync],
-    ) -> Result<(), Box<dyn TaskError>> {
+    async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
         let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message)
-            .await
-            .map_err(|e| Box::new(e) as Box<_>)
+        let fut = (self.func)(message);
+        fut.await.map_err(|e| Box::new(e) as Box<_>)
     }
-}
 
-#[async_trait]
-impl<T, F, Err, Fut> PerformableTask<T> for FunctionTask<(AsyncFunctionMarker, T), F>
-where
-    Err: TaskError,
-    Fut: Future<Output = Result<(), Err>> + Send,
-    T: TaskPayload + Into<Message<T>>,
-    F: Fn(Message<T>) -> Fut + SendSyncStatic,
-{
-    async fn perform_now<B: ThreadSafeBroker>(
-        &self,
-        app: &IronworkerApplication<B>,
+    async fn perform_now<B: Broker>(
+        self,
+        _app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), IronworkerError> {
         let message: Message<T> = payload.into();
-        self.perform(
-            SerializableMessage::from_message(self.name(), "inline", message),
-            &app.shared_data.state,
-        )
-        .await
-        .context(PerformNowSnafu {})
+        let name = self.name();
+        let fut = self.perform(SerializableMessage::from_message(name, "inline", message));
+        fut.await.context(PerformNowSnafu {})
     }
-}
 
-impl<T, F, Err, Fut> ConfigurableTask for FunctionTask<(AsyncFunctionMarker, T), F>
-where
-    Err: TaskError,
-    Fut: Future<Output = Result<(), Err>> + Send,
-    T: TaskPayload,
-    F: Fn(Message<T>) -> Fut + SendSyncStatic,
-{
     fn queue_as(mut self, queue_name: &'static str) -> Self {
         self.config.queue = queue_name;
         self
@@ -115,13 +89,13 @@ where
 
 macro_rules! impl_async_task_function {
     ($($param: ident),*) => {
-        impl<T, F, Err, Fut, $($param),*> IntoTask<(IsAsyncFunctionSystem, AsyncFunctionMarker, T, $($param),*)> for F
+        impl<T, F, Err, Fut, $($param),*> IntoTask<T, (IsAsyncFunctionSystem, AsyncFunctionMarker, T, $($param),*)> for F
         where
             Err: TaskError,
             Fut: Future<Output = Result<(), Err>> + Send,
             T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Fut + SendSyncStatic,
-            $($param: SendSyncStatic),*
+            F: Fn(Message<T>, $($param),*) -> Fut + SendStatic + Clone,
+            $($param: SendStatic),*
         {
             type Task = FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -134,13 +108,13 @@ macro_rules! impl_async_task_function {
         }
 
         #[async_trait]
-        impl<T, F, Err, Fut, $($param),*> Task for FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>
+        impl<T, F, Err, Fut, $($param),*> Task<T> for FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>
         where
             Err: TaskError,
             Fut: Future<Output = Result<(), Err>> + Send,
             T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Fut + SendSyncStatic,
-            $($param: SendSyncStatic),*
+            F: Fn(Message<T>, $($param),*) -> Fut + SendStatic + Clone,
+            $($param: SendStatic),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -153,40 +127,6 @@ macro_rules! impl_async_task_function {
                 &self.config
             }
 
-            async fn perform(&self, payload: SerializableMessage, state: &Container![Send + Sync]) -> Result<(), Box<dyn TaskError>> {
-                let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                (self.func)(message, $(state.try_get::<$param>().unwrap()),*).await.map_err(|e| Box::new(e) as Box<_>)
-            }
-        }
-
-        #[async_trait]
-        impl<T: Serialize + Send + Into<Message<T>>, F, Err, Fut, $($param),*> PerformableTask<T>
-            for FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>
-        where
-            Err: TaskError,
-            Fut: Future<Output = Result<(), Err>> + Send,
-            T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Fut + SendSyncStatic,
-            $($param: SendSyncStatic),*
-        {
-            async fn perform_now<B: ThreadSafeBroker>(
-                &self,
-                app: &IronworkerApplication<B>,
-                payload: T,
-            ) -> Result<(), IronworkerError> {
-                let message: Message<T> = payload.into();
-                self.perform(SerializableMessage::from_message(self.name(), "inline", message), &app.shared_data.state).await.context( PerformNowSnafu {})
-            }
-        }
-
-        impl<T, F, Err, Fut, $($param),*> ConfigurableTask for FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>
-        where
-            Err: TaskError,
-            Fut: Future<Output = Result<(), Err>> + Send,
-            T: TaskPayload,
-            F: Fn(Message<T>, $(&$param),*) -> Fut + SendSyncStatic,
-            $($param: SendSyncStatic),*
-        {
             fn queue_as(mut self, queue_name: &'static str) -> Self {
                 self.config.queue = queue_name;
                 self
@@ -195,6 +135,22 @@ macro_rules! impl_async_task_function {
             fn retries(mut self, count: usize) -> Self {
                 self.config.retries = count;
                 self
+            }
+
+            async fn perform_now<B: Broker>(
+                self,
+                app: &IronworkerApplication<B>,
+                payload: T,
+            ) -> Result<(), IronworkerError> {
+                // let message: Message<T> = payload.into();
+                // self.perform(SerializableMessage::from_message(self.name(), "inline", message)).await.context( PerformNowSnafu {})
+                todo!()
+            }
+
+            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+                // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
+                // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
+                todo!()
             }
         }
     };

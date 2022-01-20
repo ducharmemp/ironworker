@@ -5,13 +5,13 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::{criterion_group, criterion_main};
 use deadpool_redis::{Config, Runtime};
+use ironworker_core::Task;
 use redis::AsyncCommands;
 use snafu::prelude::*;
 
 use ironworker_core::IntoTask;
 use ironworker_core::IronworkerApplicationBuilder;
 use ironworker_core::Message;
-use ironworker_core::PerformableTask;
 use ironworker_redis::RedisBroker;
 
 #[derive(Snafu, Debug)]

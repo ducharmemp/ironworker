@@ -1,11 +1,12 @@
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use futures::future::select_all;
+use futures::StreamExt;
 
+use futures::stream::FuturesUnordered;
 use tokio::select;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
-use tokio::task::JoinHandle;
+
 use tracing::info;
 
 use super::WorkerStateMachine;
@@ -22,7 +23,7 @@ pub(crate) struct IronWorkerPool<B: Broker> {
     shared_data: Arc<SharedData<B>>,
 }
 
-impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
+impl<B: Broker> IronWorkerPool<B> {
     pub(crate) fn new(
         id: String,
         queue: &'static str,
@@ -41,21 +42,22 @@ impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
         }
     }
 
-    fn spawn_worker(&self) -> JoinHandle<()> {
+    fn spawn_worker(&self) -> impl futures::Future<Output = ()> {
         let index = self.current_worker_index.fetch_add(1, Ordering::SeqCst);
         let id = format!("{}-{}-{}", self.id.clone(), self.queue, index);
-        let queue = self.queue;
         let rx = self.worker_shutdown_channel.subscribe();
         info!(id=?id, "Booting worker {}", &id);
-        let worker = WorkerStateMachine::new(id, queue, self.shared_data.clone());
-        tokio::task::spawn(async move { worker.run(rx).await })
+        let worker = WorkerStateMachine::new(id, self.queue.clone(), self.shared_data.clone());
+        worker.run(rx)
     }
 
     pub(crate) async fn work(mut self) {
         info!(id=?self.id, queue=?self.queue, "Booting worker pool with {} workers", self.worker_count);
-        let mut worker_handles: Vec<_> = (0..self.worker_count)
+        let worker_handles: Vec<_> = (0..self.worker_count)
             .map(|_| self.spawn_worker())
             .collect();
+
+        let mut worker_handles = FuturesUnordered::from_iter(worker_handles.into_iter());
 
         loop {
             select!(
@@ -63,8 +65,7 @@ impl<B: Broker + Sync + Send + 'static> IronWorkerPool<B> {
                     self.worker_shutdown_channel.send(()).expect("All workers were dropped");
                     return;
                 },
-                (_res, _, rest) = select_all(worker_handles) => {
-                    worker_handles = rest;
+                _done = worker_handles.next() => {
                     worker_handles.push(self.spawn_worker());
                 }
             );

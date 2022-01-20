@@ -1,15 +1,15 @@
 //! Async Job Queues for Rust Applications
-//! 
+//!
 //! This crate provides the core Ironworker application, the main driver behind enqueueing and running jobs in an asynchronous manner. This
 //! library is completely backend agnostic, and instead delegates the communication strategies to auxiliary crates. Ironworker is also focused
 //! on tight integration with existing web servers to provide seamless integration and ease of use.
-//! 
+//!
 //! # Overview
-//! 
+//!
 //! At its heart, an Ironworker application acts on messages pass from Producers, through a backing datastore, and onto Consumers. This approach
 //! to structuring applications has a long history, but at a high level this structure means that work can be offloaded from user-facing servers
 //! onto dedicated machines, providing scalability, reducing coupling, and greater durability of business level operations.
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 #![deny(
     clippy::all,
     clippy::cargo,
@@ -26,7 +26,7 @@
     clippy::needless_borrow,
     private_in_public,
     unreachable_code,
-    unreachable_patterns,
+    unreachable_patterns
 )]
 #![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
@@ -47,6 +47,7 @@ mod application;
 mod broker;
 mod config;
 mod error;
+mod from_payload;
 pub mod info;
 mod message;
 mod middleware;
@@ -55,16 +56,24 @@ mod task;
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::{Broker, BrokerConfig, HeartbeatStrategy, InProcessBroker, RetryStrategy};
 pub use error::{IronworkerError, IronworkerResult};
+pub use from_payload::FromPayload;
 pub use message::{Message, SerializableMessage};
 pub use middleware::IronworkerMiddleware;
-pub use task::{ConfigurableTask, IntoTask, PerformableTask, Task};
+pub use task::{IntoTask, Task};
 
 #[cfg(test)]
 pub(crate) mod test {
     use chrono::{SubsecRound, Utc};
+    use serde::Serialize;
     use snafu::prelude::*;
 
-    use crate::{message::SerializableError, IntoTask, Message, SerializableMessage, Task};
+    use crate::{
+        message::SerializableError, task::PerformableTask, IntoTask, Message, SerializableMessage,
+        Task,
+    };
+
+    pub(crate) fn assert_send<T: Send>() {}
+    pub(crate) fn assert_sync<T: Sync>() {}
 
     #[derive(Snafu, Debug)]
     pub(crate) enum TestEnum {
@@ -72,8 +81,10 @@ pub(crate) mod test {
         Failed,
     }
 
-    pub(crate) fn boxed_task<T: Task>(t: T) -> Box<dyn Task> {
-        Box::new(t)
+    pub(crate) fn boxed_task<T: Serialize + Send + 'static>(
+        t: impl Task<T>,
+    ) -> Box<dyn PerformableTask> {
+        Box::new(t.into_performable_task())
     }
 
     pub(crate) async fn successful(_message: Message<u32>) -> Result<(), TestEnum> {
@@ -84,12 +95,12 @@ pub(crate) mod test {
         Err(TestEnum::Failed)
     }
 
-    pub(crate) fn message(task: Box<dyn Task>) -> SerializableMessage {
+    pub(crate) fn message(task: Box<dyn PerformableTask>) -> SerializableMessage {
         SerializableMessage {
             enqueued_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
             job_id: "test-id".to_string(),
-            task: task.name().to_string(),
+            task: "task".to_string(),
             payload: 123.into(),
             err: None,
             retries: 0,

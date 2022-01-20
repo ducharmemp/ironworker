@@ -2,8 +2,7 @@
 use async_trait::async_trait;
 use aws_sdk_sqs::{Client, Endpoint};
 use ironworker_core::{
-    ConfigurableTask, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
-    PerformableTask,
+    IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
 };
 use ironworker_sqs::SqsBroker;
 use serde::{Deserialize, Serialize};
@@ -50,10 +49,6 @@ fn my_complex_task(_message: Message<Complex>) -> Result<(), TestEnum> {
     Ok(())
 }
 
-fn test_multiple(_message: Message<Complex>, _test: &u32) -> Result<(), TestEnum> {
-    Ok(())
-}
-
 fn my_panicking_task(_message: Message<u32>) -> Result<(), TestEnum> {
     Err(TestEnum::Failed)
 }
@@ -79,7 +74,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_task(my_task.task().queue_as("fake").retries(2))
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))
-        .register_task(test_multiple.task())
         .register_task(my_panicking_task.task().retries(5))
         .register_middleware(Middleware)
         .build();
