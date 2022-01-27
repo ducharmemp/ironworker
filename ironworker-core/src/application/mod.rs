@@ -46,8 +46,8 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
         let message: Message<P> = payload.into();
         let handler_config = {
             let shared = self.shared_data.tasks.lock().await;
-            let handler = shared.get(task).unwrap();
-            handler.config()
+            let (_, handler_config) = shared.get(task).unwrap();
+            *handler_config
         };
 
         let serializable = SerializableMessage::from_message(task, handler_config.queue, message);

@@ -51,8 +51,8 @@ where
         type_name_of(&self.func)
     }
 
-    fn config(&'_ self) -> &'_ Config {
-        &self.config
+    fn config(&self) -> Config {
+        self.config
     }
 
     async fn perform_now<B: Broker>(
@@ -116,14 +116,14 @@ macro_rules! impl_task_function {
                 type_name_of(&self.func)
             }
 
-            fn config(&'_ self) -> &'_ Config {
-                &self.config
+            fn config(&self) -> Config {
+                self.config.clone()
             }
 
             async fn perform_now<B: Broker>(
                 self,
-                app: &IronworkerApplication<B>,
-                payload: T,
+                _app: &IronworkerApplication<B>,
+                _payload: T,
             ) -> Result<(), IronworkerError> {
                 // let message: Message<T> = payload.into();
                 // self.perform(SerializableMessage::from_message(self.name(), "inline", message)).await.context( PerformNowSnafu {})
@@ -140,7 +140,7 @@ macro_rules! impl_task_function {
                 self
             }
 
-            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+            async fn perform(self, _payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
                 // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
                 // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
                 todo!()

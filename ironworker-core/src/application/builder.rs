@@ -6,7 +6,7 @@ use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 use crate::config::IronworkerConfig;
-use crate::task::PerformableTask;
+use crate::task::{PerformableTask, Config};
 use crate::{Broker, IronworkerApplication};
 use crate::{IronworkerMiddleware, Message, Task};
 
@@ -16,7 +16,7 @@ use super::shared::SharedData;
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
     broker: Option<B>,
-    tasks: HashMap<&'static str, Box<dyn PerformableTask>>,
+    tasks: HashMap<&'static str, (Box<dyn PerformableTask>, Config)>,
     middleware: Vec<Box<dyn IronworkerMiddleware>>,
     queues: HashSet<&'static str>,
 }
@@ -32,7 +32,11 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
 
         self.tasks
             .entry(task.name())
-            .or_insert_with(|| Box::new(task.into_performable_task()) as Box<_>);
+            .or_insert_with(|| {
+                let config = task.config();
+                let performable = Box::new(task.into_performable_task()) as Box<_>;
+                (performable, config)
+            });
         self
     }
 

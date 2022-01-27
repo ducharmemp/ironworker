@@ -95,7 +95,7 @@ pub(crate) mod test {
         Err(TestEnum::Failed)
     }
 
-    pub(crate) fn message(task: Box<dyn PerformableTask>) -> SerializableMessage {
+    pub(crate) fn message(_task: Box<dyn PerformableTask>) -> SerializableMessage {
         SerializableMessage {
             enqueued_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),

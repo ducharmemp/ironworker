@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{SerializableMessage, Task};
 
-use super::{Config, TaskError};
+use super::TaskError;
 
 pub struct IntoPerformableTask<Tsk, T> {
     inner: Tsk,
@@ -44,7 +44,6 @@ where
 #[async_trait]
 pub trait PerformableTask: Send {
     async fn perform(&mut self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
-    fn config(&self) -> Config;
     fn clone_box(&self) -> Box<dyn PerformableTask>;
 }
 
@@ -62,10 +61,5 @@ where
         let inner = self.inner.clone();
         let fut = inner.perform(payload);
         fut.await
-    }
-
-    fn config(&self) -> Config {
-        let inner = self.inner.clone();
-        *inner.config()
     }
 }

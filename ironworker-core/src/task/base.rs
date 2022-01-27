@@ -32,7 +32,7 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
     SendStatic + Sized + Clone
 {
     fn name(&self) -> &'static str;
-    fn config(&self) -> &Config;
+    fn config(&self) -> Config;
 
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;

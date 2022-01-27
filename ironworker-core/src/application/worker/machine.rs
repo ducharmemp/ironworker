@@ -156,9 +156,10 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn execute(&self, mut message: SerializableMessage) -> WorkerEvent {
         let tasks = self.shared_data.tasks.lock().await;
-        let handler = tasks.get(&message.task.as_str());
-        let mut handler = handler.unwrap().clone_box();
-        let max_run_time = handler.config().max_run_time;
+        let handler_entry = tasks.get(&message.task.as_str());
+        let (handler, config) = handler_entry.unwrap();
+        let mut handler = handler.clone_box();
+        let max_run_time = config.max_run_time;
         let task_future = timeout(
             Duration::from_secs(max_run_time),
             handler.perform(message.clone()),
@@ -202,9 +203,8 @@ impl<B: Broker> WorkerStateMachine<B> {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let mut message = message.clone();
         let tasks = self.shared_data.tasks.lock().await;
-        let handler = tasks.get(&message.task.as_str());
-        let handler = handler.unwrap();
-        let handler_config = handler.config();
+        let handler_entry = tasks.get(&message.task.as_str());
+        let (_, handler_config) = handler_entry.unwrap();
         let retries = handler_config.retries;
         let should_discard = false;
         let queue = handler_config.queue;
@@ -330,10 +330,14 @@ mod test {
         Arc::new(SharedData {
             broker: InProcessBroker::default(),
             middleware: Default::default(),
-            tasks: HashMap::from_iter([
-                (successful.task().name(), boxed_task(successful.task())),
-                (failed.task().name(), boxed_task(failed.task())),
-            ]),
+            tasks: Mutex::new(HashMap::from_iter([
+                (
+                    successful.task().name(), (boxed_task(successful.task()), successful.task().config())
+                ),
+                (
+                    failed.task().name(), (boxed_task(failed.task()), failed.task().config())
+                ),
+            ])),
         })
     }
 
@@ -343,10 +347,14 @@ mod test {
         Arc::new(SharedData {
             broker: InProcessBroker::default(),
             middleware,
-            tasks: HashMap::from_iter([
-                (successful.task().name(), boxed_task(successful.task())),
-                (failed.task().name(), boxed_task(failed.task())),
-            ]),
+            tasks: Mutex::new(HashMap::from_iter([
+                (
+                    successful.task().name(), (boxed_task(successful.task()), successful.task().config())
+                ),
+                (
+                    failed.task().name(), (boxed_task(failed.task()), failed.task().config())
+                ),
+            ])),
         })
     }
 
