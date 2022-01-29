@@ -9,7 +9,7 @@ use crate::error::PerformNowSnafu;
 use crate::message::{Message, SerializableMessage};
 use crate::{Broker, IntoTask, IronworkerError, Task};
 
-use super::base::{SendStatic, TaskError, TaskPayload};
+use super::base::{SendSyncStatic, TaskError, TaskPayload};
 use super::config::Config;
 use super::FunctionTask;
 
@@ -25,7 +25,7 @@ impl<T, F, Err> IntoTask<T, (IsFunctionSystem, FunctionMarker, T)> for F
 where
     Err: TaskError,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Result<(), Err> + SendStatic + Clone,
+    F: FnOnce(Message<T>) -> Result<(), Err> + SendSyncStatic + Clone,
 {
     type Task = FunctionTask<(FunctionMarker, T, Err), F>;
     fn task(self) -> Self::Task {
@@ -42,7 +42,7 @@ impl<T, F, Err> Task<T> for FunctionTask<(FunctionMarker, T, Err), F>
 where
     Err: TaskError,
     T: TaskPayload,
-    F: Fn(Message<T>) -> Result<(), Err> + SendStatic + Clone,
+    F: FnOnce(Message<T>) -> Result<(), Err> + SendSyncStatic + Clone,
 {
     fn name(&self) -> &'static str {
         fn type_name_of<T>(_: T) -> &'static str {
@@ -88,8 +88,8 @@ macro_rules! impl_task_function {
         where
             Err: TaskError,
             T: TaskPayload,
-            F: Fn(Message<T>, $($param),*) -> Result<(), Err> + SendStatic + Clone,
-            $($param: SendStatic),*
+            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
+            $($param: SendSyncStatic),*
         {
             type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -106,8 +106,8 @@ macro_rules! impl_task_function {
         where
             Err: TaskError,
             T: TaskPayload,
-            F: Fn(Message<T>, $($param),*) -> Result<(), Err> + SendStatic + Clone,
-            $($param: SendStatic),*
+            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
+            $($param: SendSyncStatic),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -122,12 +122,12 @@ macro_rules! impl_task_function {
 
             async fn perform_now<B: Broker>(
                 self,
-                _app: &IronworkerApplication<B>,
-                _payload: T,
+                app: &IronworkerApplication<B>,
+                payload: T,
             ) -> Result<(), IronworkerError> {
-                // let message: Message<T> = payload.into();
-                // self.perform(SerializableMessage::from_message(self.name(), "inline", message)).await.context( PerformNowSnafu {})
-                todo!()
+                let message: Message<T> = payload.into();
+                let name = self.name();
+                self.perform(SerializableMessage::from_message(name, "inline", message)).await.context( PerformNowSnafu {})
             }
 
             fn queue_as(mut self, queue_name: &'static str) -> Self {
@@ -140,7 +140,7 @@ macro_rules! impl_task_function {
                 self
             }
 
-            async fn perform(self, _payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
                 // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
                 // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
                 todo!()

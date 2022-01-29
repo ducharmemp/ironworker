@@ -25,11 +25,11 @@ auxiliary_trait!(
     TaskPayload,
     for<'de> Deserialize<'de> + Serialize + 'static + Send
 );
-auxiliary_trait!(SendStatic, Send + 'static);
+auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
 
 #[async_trait]
 pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
-    SendStatic + Sized + Clone
+    SendSyncStatic + Sized + Clone
 {
     fn name(&self) -> &'static str;
     fn config(&self) -> Config;

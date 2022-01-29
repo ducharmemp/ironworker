@@ -45,8 +45,7 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
     ) -> Result<(), IronworkerError> {
         let message: Message<P> = payload.into();
         let handler_config = {
-            let shared = self.shared_data.tasks.lock().await;
-            let (_, handler_config) = shared.get(task).unwrap();
+            let (_, handler_config) = self.shared_data.tasks.get(task).unwrap();
             *handler_config
         };
 

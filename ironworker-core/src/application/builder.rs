@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::Serialize;
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::config::IronworkerConfig;
-use crate::task::{PerformableTask, Config};
+use crate::task::{Config, PerformableTask};
 use crate::{Broker, IronworkerApplication};
 use crate::{IronworkerMiddleware, Message, Task};
 
@@ -30,13 +30,11 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
         let task_config = Task::config(&task);
         self.queues.insert(task_config.queue);
 
-        self.tasks
-            .entry(task.name())
-            .or_insert_with(|| {
-                let config = task.config();
-                let performable = Box::new(task.into_performable_task()) as Box<_>;
-                (performable, config)
-            });
+        self.tasks.entry(task.name()).or_insert_with(|| {
+            let config = task.config();
+            let performable = Box::new(task.into_performable_task()) as Box<_>;
+            (performable, config)
+        });
         self
     }
 
@@ -62,7 +60,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
             queues: self.queues,
             shared_data: Arc::new(SharedData {
                 broker: self.broker.expect("Expected a broker to be registered"),
-                tasks: Mutex::new(self.tasks),
+                tasks: self.tasks,
                 middleware: self.middleware,
             }),
         }
