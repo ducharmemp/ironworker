@@ -122,7 +122,7 @@ macro_rules! impl_task_function {
 
             async fn perform_now<B: Broker>(
                 self,
-                app: &IronworkerApplication<B>,
+                _app: &IronworkerApplication<B>,
                 payload: T,
             ) -> Result<(), IronworkerError> {
                 let message: Message<T> = payload.into();
@@ -140,7 +140,7 @@ macro_rules! impl_task_function {
                 self
             }
 
-            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+            async fn perform(self, _payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
                 // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
                 // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
                 todo!()

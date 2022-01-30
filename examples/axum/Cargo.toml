@@ -1,0 +1,19 @@
+[package]
+name = "axum"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.4"
+tokio = { version = "1", features = ["full"] }
+ironworker-redis = { path = "../../ironworker-redis" }
+ironworker-core = { path = "../../ironworker-core" }
+anyhow = "1"
+serde = "1"
+tracing-subscriber = "0.3"
+tracing = "0.1"
+snafu = "0.7"
+async-trait = "0.1"
