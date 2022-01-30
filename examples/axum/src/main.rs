@@ -1,93 +1,169 @@
-#![deny(clippy::all)]
-use async_trait::async_trait;
-use ironworker_core::{
-    IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
+//! Provides a RESTful web server managing some Todos.
+//!
+//! API will be:
+//!
+//! - `GET /todos`: return a JSON list of Todos.
+//! - `POST /todos`: create a new Todo.
+//! - `PUT /todos/:id`: update a specific Todo.
+//! - `DELETE /todos/:id`: delete a specific Todo.
+//!
+//! Run with
+//!
+//! ```not_rust
+//! cargo run -p example-todos
+//! ```
+//!
+//! Taken from https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs with ironworker mixed in
+
+use axum::{
+    error_handling::HandleErrorLayer,
+    extract::{Extension, Path, Query},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, patch},
+    Json, Router,
 };
-use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
-
-struct Middleware;
-
-#[async_trait]
-impl IronworkerMiddleware for Middleware {
-    async fn on_task_start(&self) {
-        // dbg!("Started");
-    }
-
-    async fn on_task_completion(&self) {
-        // dbg!("Completed");
-    }
-
-    async fn on_task_failure(&self) {
-        // dbg!("Failed");
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Complex {
-    val: String,
-    other: i32,
-}
-
-impl Complex {
-    fn new(val: String, other: i32) -> Complex {
-        Complex { val, other }
-    }
-}
-
-fn my_task(_message: Message<u32>) -> Result<(), TestEnum> {
-    Ok(())
-}
-
-async fn my_async_task(_message: Message<u32>) -> Result<(), TestEnum> {
-    Ok(())
-}
-
-fn my_complex_task(_message: Message<Complex>) -> Result<(), TestEnum> {
-    Ok(())
-}
-
-fn my_panicking_task(_message: Message<u32>) -> Result<(), TestEnum> {
-    Err(TestEnum::Failed)
-}
-
-#[derive(Snafu, Debug)]
-enum TestEnum {
-    #[snafu(display("The task failed"))]
-    Failed,
-}
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
+use tower::{BoxError, ServiceBuilder};
+use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
+use uuid::Uuid;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    // Set the RUST_LOG, if it hasn't been explicitly defined
+    if std::env::var_os("RUST_LOG").is_none() {
+        std::env::set_var("RUST_LOG", "example_todos=debug,tower_http=debug")
+    }
     tracing_subscriber::fmt::init();
-    let app = IronworkerApplicationBuilder::default()
-        .broker(RedisBroker::new("redis://localhost:6379").await)
-        .register_task(my_task.task().queue_as("fake").retries(2))
-        .register_task(my_complex_task.task().queue_as("complex"))
-        .register_task(my_async_task.task().queue_as("async"))
-        .register_task(my_panicking_task.task().retries(5))
-        .register_middleware(Middleware)
-        .build();
 
-    my_task.task().perform_later(&app, 123).await?;
-    my_complex_task
-        .task()
-        .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
-        .await?;
+    let db = Db::default();
 
-    my_complex_task
-        .task()
-        .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
-        .await?;
+    // Compose the routes
+    let app = Router::new()
+        .route("/todos", get(todos_index).post(todos_create))
+        .route("/todos/:id", patch(todos_update).delete(todos_delete))
+        // Add middleware to all routes
+        .layer(
+            ServiceBuilder::new()
+                .layer(HandleErrorLayer::new(|error: BoxError| async move {
+                    if error.is::<tower::timeout::error::Elapsed>() {
+                        Ok(StatusCode::REQUEST_TIMEOUT)
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Unhandled internal error: {}", error),
+                        ))
+                    }
+                }))
+                .timeout(Duration::from_secs(10))
+                .layer(TraceLayer::new_for_http())
+                .layer(AddExtensionLayer::new(db.clone()))
+                .into_inner(),
+        );
 
-    for _ in 0..100_000 {
-        my_panicking_task.task().perform_later(&app, 123).await?;
-        my_task.task().perform_later(&app, 123).await?;
-        my_async_task.task().perform_later(&app, 123).await?;
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    tracing::debug!("listening on {}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+// The query parameters for todos index
+#[derive(Debug, Deserialize, Default)]
+pub struct Pagination {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
+}
+
+async fn todos_index(
+    pagination: Option<Query<Pagination>>,
+    Extension(db): Extension<Db>,
+) -> impl IntoResponse {
+    let todos = db.read().unwrap();
+
+    let Query(pagination) = pagination.unwrap_or_default();
+
+    let todos = todos
+        .values()
+        .cloned()
+        .skip(pagination.offset.unwrap_or(0))
+        .take(pagination.limit.unwrap_or(usize::MAX))
+        .collect::<Vec<_>>();
+
+    Json(todos)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateTodo {
+    text: String,
+}
+
+async fn todos_create(
+    Json(input): Json<CreateTodo>,
+    Extension(db): Extension<Db>,
+) -> impl IntoResponse {
+    let todo = Todo {
+        id: Uuid::new_v4(),
+        text: input.text,
+        completed: false,
+    };
+
+    db.write().unwrap().insert(todo.id, todo.clone());
+
+    (StatusCode::CREATED, Json(todo))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateTodo {
+    text: Option<String>,
+    completed: Option<bool>,
+}
+
+async fn todos_update(
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdateTodo>,
+    Extension(db): Extension<Db>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let mut todo = db
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if let Some(text) = input.text {
+        todo.text = text;
     }
 
-    app.run().await;
+    if let Some(completed) = input.completed {
+        todo.completed = completed;
+    }
 
-    Ok(())
+    db.write().unwrap().insert(todo.id, todo.clone());
+
+    Ok(Json(todo))
+}
+
+async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> impl IntoResponse {
+    if db.write().unwrap().remove(&id).is_some() {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;
+
+#[derive(Debug, Serialize, Clone)]
+struct Todo {
+    id: Uuid,
+    text: String,
+    completed: bool,
 }

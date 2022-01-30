@@ -13,7 +13,10 @@ ironworker-redis = { path = "../../ironworker-redis" }
 ironworker-core = { path = "../../ironworker-core" }
 anyhow = "1"
 serde = "1"
-tracing-subscriber = "0.3"
-tracing = "0.1"
 snafu = "0.7"
 async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version="0.3", features = ["env-filter"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.2.0", features = ["add-extension", "trace"] }
+uuid = { version = "0.8", features = ["serde", "v4"] }

@@ -6,17 +6,11 @@ use uuid::Uuid;
 use crate::task::TaskError;
 
 #[derive(Debug)]
-pub struct Message<T>(T);
+pub struct Message<T>(pub T);
 
 impl<T: Serialize> From<T> for Message<T> {
     fn from(payload: T) -> Self {
         Self(payload)
-    }
-}
-
-impl<T> Message<T> {
-    pub fn into_inner(self) -> T {
-        self.0
     }
 }
 
@@ -61,12 +55,12 @@ pub struct SerializableMessage {
 
 impl SerializableMessage {
     /// Converts from a given message into a serializable representation
-    pub fn from_message<T: Serialize>(task: &str, queue: &str, message: Message<T>) -> Self {
+    pub fn from_message<T: Serialize>(task: &str, queue: &str, Message(value): Message<T>) -> Self {
         Self {
             job_id: Uuid::new_v4().to_string(),
             task: task.to_string(),
             queue: queue.to_string(),
-            payload: to_value(message.into_inner()).unwrap(),
+            payload: to_value(value).unwrap(),
             enqueued_at: Utc::now(),
             err: None,
             retries: 0,

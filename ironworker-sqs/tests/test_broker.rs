@@ -102,7 +102,7 @@ async fn test_dequeue() {
     assert_eq!(enqueued_message.enqueued_at, dequeued.enqueued_at);
     assert_eq!(enqueued_message.retries, 0);
     assert_eq!(enqueued_message.err, None);
-    assert_eq!(dequeued.delivery_tag.is_some(), true);
+    assert!(dequeued.delivery_tag.is_some());
 }
 
 #[tokio::test]

@@ -148,7 +148,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
         debug!(id=?self.id, "Running pre-execution hooks");
         for middleware in self.shared_data.middleware.iter() {
-            middleware.on_task_start().await;
+            middleware.before_perform().await;
         }
         WorkerEvent::PreExecuteCompleted
     }
@@ -184,7 +184,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn post_execute(&self, message: &SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running post-execution hooks");
         for middleware in self.shared_data.middleware.iter() {
-            middleware.on_task_completion().await;
+            middleware.after_perform().await;
         }
         if let Err(broker_error) = self
             .shared_data
@@ -219,7 +219,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn post_failure(&self, _message: &SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running failed hooks");
         for middleware in self.shared_data.middleware.iter() {
-            middleware.on_task_failure().await;
+            middleware.after_perform().await;
         }
         WorkerEvent::PostFailureCompleted
     }
@@ -312,7 +312,7 @@ mod test {
     use async_trait::async_trait;
     use snafu::Snafu;
     use tokio::sync::Mutex;
-    use tokio::time::{self};
+    use tokio::time;
 
     use crate::test::{
         boxed_task, enqueued_successful_message, failed, failed_message, successful,
