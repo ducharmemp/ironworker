@@ -109,6 +109,7 @@ macro_rules! impl_async_task_function {
         }
 
         #[async_trait]
+        #[allow(non_snake_case)]
         impl<T, F, Err, Fut, $($param),*> Task<T> for FunctionTask<(AsyncFunctionMarker, T, $($param),*), F>
         where
             Err: TaskError,

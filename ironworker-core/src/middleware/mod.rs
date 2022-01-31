@@ -10,6 +10,4 @@ pub trait IronworkerMiddleware: Send + Sync + 'static {
     async fn after_enqueue(&self) {}
     async fn before_perform(&self, _message: &mut SerializableMessage) {}
     async fn after_perform(&self) {}
-    async fn around_enqueue(&self) {}
-    async fn around_perform(&self) {}
 }

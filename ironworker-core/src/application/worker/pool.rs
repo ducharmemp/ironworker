@@ -53,11 +53,10 @@ impl<B: Broker> IronWorkerPool<B> {
 
     pub(crate) async fn work(mut self) {
         info!(id=?self.id, queue=?self.queue, "Booting worker pool with {} workers", self.worker_count);
-        let worker_handles: Vec<_> = (0..self.worker_count)
-            .map(|_| self.spawn_worker())
-            .collect();
+        let worker_handles = (0..self.worker_count)
+            .map(|_| self.spawn_worker());
 
-        let mut worker_handles = FuturesUnordered::from_iter(worker_handles.into_iter());
+        let mut worker_handles = FuturesUnordered::from_iter(worker_handles);
 
         loop {
             select!(

@@ -47,7 +47,7 @@ async fn test_enqueue() {
                 err: None,
                 retries: 0,
                 delivery_tag: None,
-                extensions: Default::default(),
+                message_state: Default::default(),
             },
         )
         .await
@@ -88,7 +88,7 @@ async fn test_dequeue() {
         err: None,
         retries: 0,
         delivery_tag: None,
-        extensions: Default::default(),
+        message_state: Default::default(),
     };
     broker
         .enqueue(queue, enqueued_message.clone())

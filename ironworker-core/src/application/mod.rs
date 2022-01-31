@@ -64,7 +64,7 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
 
-        let handles: Vec<_> = self
+        let handles = self
             .queues
             .iter()
             .map(|queue| {
@@ -85,10 +85,9 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
                 );
 
                 pool.work()
-            })
-            .collect();
+            });
 
-        let mut handles = FuturesUnordered::from_iter(handles.into_iter());
+        let mut handles = FuturesUnordered::from_iter(handles);
 
         select!(
             _ = self.notify_shutdown.notified() => {

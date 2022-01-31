@@ -6,6 +6,7 @@ use snafu::ResultExt;
 
 use crate::application::IronworkerApplication;
 use crate::error::PerformNowSnafu;
+use crate::from_payload::FromPayload;
 use crate::message::{Message, SerializableMessage};
 use crate::{Broker, IntoTask, IronworkerError, Task};
 
@@ -89,7 +90,7 @@ macro_rules! impl_task_function {
             Err: TaskError,
             T: TaskPayload,
             F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
-            $($param: SendSyncStatic),*
+            $($param: SendSyncStatic + FromPayload),*
         {
             type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -102,12 +103,13 @@ macro_rules! impl_task_function {
         }
 
         #[async_trait]
+        #[allow(non_snake_case)]
         impl<T, F, Err, $($param),*> Task<T> for FunctionTask<(FunctionMarker, T, Err, $($param),*), F>
         where
             Err: TaskError,
             T: TaskPayload,
             F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
-            $($param: SendSyncStatic),*
+            $($param: SendSyncStatic + FromPayload),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -140,10 +142,12 @@ macro_rules! impl_task_function {
                 self
             }
 
-            async fn perform(self, _payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
-                // let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-                // (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
-                todo!()
+            async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
+                let message: Message<T> = from_value::<T>(payload.payload.clone()).unwrap().into();
+                $(
+                    let $param = $param::from_payload(&payload).await.unwrap();
+                )*
+                (self.func)(message, $($param,)*).map_err(|e| Box::new(e) as Box<_>)
             }
         }
     };

@@ -12,17 +12,6 @@ struct Middleware;
 
 #[async_trait]
 impl IronworkerMiddleware for Middleware {
-    async fn on_task_start(&self) {
-        // dbg!("Started");
-    }
-
-    async fn on_task_completion(&self) {
-        // dbg!("Completed");
-    }
-
-    async fn on_task_failure(&self) {
-        // dbg!("Failed");
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
