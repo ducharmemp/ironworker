@@ -51,7 +51,7 @@ mod error;
 mod from_payload;
 pub mod info;
 mod message;
-mod middleware;
+pub mod middleware;
 mod task;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
@@ -106,7 +106,7 @@ pub(crate) mod test {
             err: None,
             retries: 0,
             delivery_tag: None,
-            extensions: Default::default(),
+            message_state: Default::default(),
         }
     }
 

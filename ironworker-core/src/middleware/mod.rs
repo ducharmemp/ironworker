@@ -1,4 +1,4 @@
-mod extract;
+pub mod extract;
 
 use async_trait::async_trait;
 
@@ -8,7 +8,7 @@ use crate::SerializableMessage;
 pub trait IronworkerMiddleware: Send + Sync + 'static {
     async fn before_enqueue(&self) {}
     async fn after_enqueue(&self) {}
-    async fn before_perform(&self, message: SerializableMessage) -> SerializableMessage { message }
+    async fn before_perform(&self, _message: &mut SerializableMessage) {}
     async fn after_perform(&self) {}
     async fn around_enqueue(&self) {}
     async fn around_perform(&self) {}

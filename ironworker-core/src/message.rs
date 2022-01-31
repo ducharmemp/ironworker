@@ -54,7 +54,7 @@ pub struct SerializableMessage {
     pub delivery_tag: Option<String>,
 
     #[serde(skip)]
-    pub extensions: Map<dyn CloneAny + Send + Sync>,
+    pub message_state: Map<dyn CloneAny + Send + Sync>,
 }
 
 impl SerializableMessage {
@@ -69,7 +69,7 @@ impl SerializableMessage {
             err: None,
             retries: 0,
             delivery_tag: None,
-            extensions: Default::default(),
+            message_state: Default::default(),
         }
     }
 }

@@ -23,9 +23,15 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
+use ironworker_core::{
+    middleware::extract::{AddMessageStateMiddleware, Extract},
+    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, Task,
+};
+use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    convert::Infallible,
     net::SocketAddr,
     sync::{Arc, RwLock},
     time::Duration,
@@ -43,6 +49,14 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let db = Db::default();
+
+    let ironworker = Arc::new(
+        IronworkerApplicationBuilder::default()
+            .broker(RedisBroker::new("redis://localhost:6379").await)
+            .register_task(log_todos.task().retries(2))
+            .register_middleware(AddMessageStateMiddleware::new(db.clone()))
+            .build(),
+    );
 
     // Compose the routes
     let app = Router::new()
@@ -64,11 +78,16 @@ async fn main() {
                 .timeout(Duration::from_secs(10))
                 .layer(TraceLayer::new_for_http())
                 .layer(AddExtensionLayer::new(db.clone()))
+                .layer(AddExtensionLayer::new(ironworker.clone()))
                 .into_inner(),
         );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::debug!("listening on {}", addr);
+    tokio::spawn(async move {
+        ironworker.run().await;
+    });
+
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
@@ -108,6 +127,7 @@ struct CreateTodo {
 async fn todos_create(
     Json(input): Json<CreateTodo>,
     Extension(db): Extension<Db>,
+    Extension(ironworker): Extension<Arc<IronworkerApplication<RedisBroker>>>,
 ) -> impl IntoResponse {
     let todo = Todo {
         id: Uuid::new_v4(),
@@ -116,6 +136,11 @@ async fn todos_create(
     };
 
     db.write().unwrap().insert(todo.id, todo.clone());
+    log_todos
+        .task()
+        .perform_later(&ironworker, todo.id)
+        .await
+        .unwrap();
 
     (StatusCode::CREATED, Json(todo))
 }
@@ -157,6 +182,13 @@ async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> imp
     } else {
         StatusCode::NOT_FOUND
     }
+}
+
+async fn log_todos(Message(id): Message<Uuid>, Extract(db): Extract<Db>) -> Result<(), Infallible> {
+    let todos = db.read().unwrap();
+    let todo = todos.values().cloned().find(|val| val.id == id);
+    dbg!(todo);
+    Ok(())
 }
 
 type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;
