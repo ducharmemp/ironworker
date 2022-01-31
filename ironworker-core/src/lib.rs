@@ -26,7 +26,8 @@
     clippy::needless_borrow,
     private_in_public,
     unreachable_code,
-    unreachable_patterns
+    unreachable_patterns,
+    noop_method_call
 )]
 #![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
@@ -105,6 +106,7 @@ pub(crate) mod test {
             err: None,
             retries: 0,
             delivery_tag: None,
+            extensions: Default::default(),
         }
     }
 

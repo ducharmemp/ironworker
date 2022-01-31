@@ -27,6 +27,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84450d0b4a8bd1ba4144ce8ce718fbc5d071358b1e5384bace6536b3d1f2d5b3"
 
 [[package]]
+name = "anymap"
+version = "1.0.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dd0cd4d1fe5ef0c478c4cfa7a026293dddcad469fb5516a853479fb7fe4bd2a"
+
+[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1295,6 +1301,7 @@ dependencies = [
 name = "ironworker-core"
 version = "0.1.0"
 dependencies = [
+ "anymap",
  "async-trait",
  "chrono",
  "config",

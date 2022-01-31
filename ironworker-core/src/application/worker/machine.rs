@@ -142,7 +142,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         )
     }
 
-    async fn pre_execute(&self, message: &SerializableMessage) -> WorkerEvent {
+    async fn pre_execute(&self, message: SerializableMessage) -> WorkerEvent {
         if !self.shared_data.tasks.contains_key(&message.task.as_str()) {
             return WorkerEvent::PreExecuteFailed;
         }
@@ -181,7 +181,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
-    async fn post_execute(&self, message: &SerializableMessage) -> WorkerEvent {
+    async fn post_execute(&self, message: SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running post-execution hooks");
         for middleware in self.shared_data.middleware.iter() {
             middleware.after_perform().await;
@@ -197,7 +197,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         WorkerEvent::PostExecuteCompleted
     }
 
-    async fn execute_failed(&self, message: &SerializableMessage) -> WorkerEvent {
+    async fn execute_failed(&self, message: SerializableMessage) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let mut message = message.clone();
         let handler_entry = self.shared_data.tasks.get(&message.task.as_str());
@@ -216,7 +216,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
-    async fn post_failure(&self, _message: &SerializableMessage) -> WorkerEvent {
+    async fn post_failure(&self, _message: SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running failed hooks");
         for middleware in self.shared_data.middleware.iter() {
             middleware.after_perform().await;
@@ -224,7 +224,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         WorkerEvent::PostFailureCompleted
     }
 
-    async fn retry_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
+    async fn retry_task(&self, queue: &str, message: SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Marking job {} for retry", message.job_id);
         if let Err(broker_error) = self
             .shared_data
@@ -237,7 +237,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         WorkerEvent::RetryCompleted
     }
 
-    async fn deadletter_task(&self, queue: &str, message: &SerializableMessage) -> WorkerEvent {
+    async fn deadletter_task(&self, queue: &str, message: SerializableMessage) -> WorkerEvent {
         // TODO: Remove these clones
         if let Err(broker_error) = self
             .shared_data
@@ -251,10 +251,10 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn step(&mut self) -> WorkerEvent {
-        match &self.state {
+        match self.state {
             WorkerState::Initialize => {
                 if let Err(broker_error) = self.shared_data.broker.heartbeat(&self.id).await {
-                    error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+                    error!(id=?self.id, "Heartbeat failed, {:?}", broker_error);
                 }
                 WorkerEvent::Initialized
             }
@@ -262,7 +262,7 @@ impl<B: Broker> WorkerStateMachine<B> {
             WorkerState::HeartBeat => {
                 debug!(id=?self.id, "Emitting heartbeat");
                 if let Err(broker_error) = self.shared_data.broker.heartbeat(&self.id).await {
-                    error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+                    error!(id=?self.id, "Heartbeat failed, {:?}", broker_error);
                 }
                 WorkerEvent::HeartBeatCompleted
             }

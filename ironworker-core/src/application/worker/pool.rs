@@ -47,7 +47,7 @@ impl<B: Broker> IronWorkerPool<B> {
         let id = format!("{}-{}-{}", self.id.clone(), self.queue, index);
         let rx = self.worker_shutdown_channel.subscribe();
         info!(id=?id, "Booting worker {}", &id);
-        let worker = WorkerStateMachine::new(id, self.queue.clone(), self.shared_data.clone());
+        let worker = WorkerStateMachine::new(id, self.queue, self.shared_data.clone());
         worker.run(rx)
     }
 

@@ -1,3 +1,4 @@
+use anymap::{CloneAny, Map};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{to_value, Value};
@@ -30,7 +31,7 @@ impl SerializableError {
 /// Serializable representation of a job given to a broker. A broker receiving this message should
 /// persist it in the way that makes the most sense for the backing datastore. Most of the time
 /// this is going to mean converting the whole message to a JSON string.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SerializableMessage {
     /// The unique identifier of the job.
     pub job_id: String,
@@ -51,6 +52,9 @@ pub struct SerializableMessage {
     /// the datastore.
     #[serde(default)]
     pub delivery_tag: Option<String>,
+
+    #[serde(skip)]
+    pub extensions: Map<dyn CloneAny + Send + Sync>,
 }
 
 impl SerializableMessage {
@@ -65,6 +69,22 @@ impl SerializableMessage {
             err: None,
             retries: 0,
             delivery_tag: None,
+            extensions: Default::default(),
         }
     }
 }
+
+impl PartialEq for SerializableMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.job_id == other.job_id
+            && self.queue == other.queue
+            && self.task == other.task
+            && self.payload == other.payload
+            && self.enqueued_at == other.enqueued_at
+            && self.err == other.err
+            && self.retries == other.retries
+            && self.delivery_tag == other.delivery_tag
+    }
+}
+
+impl Eq for SerializableMessage {}
