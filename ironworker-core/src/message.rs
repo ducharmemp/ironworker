@@ -9,6 +9,8 @@ use uuid::Uuid;
 
 use crate::{task::TaskError, FromPayload};
 
+/// A job payload. This struct describes the argument to a given task (passed in by `perform_now`/`perform_later`).
+/// This is a mandatory field for all tasks, even if the internal value is an empty tuple.
 #[derive(Debug)]
 pub struct Message<T>(pub T);
 
@@ -69,6 +71,7 @@ pub struct SerializableMessage {
     #[serde(default)]
     pub delivery_tag: Option<String>,
 
+    /// A data bag, useful for middlewares to add state that should be `Extract`-ed when the task is run
     #[serde(skip)]
     pub message_state: Map<dyn CloneAny + Send + Sync>,
 }

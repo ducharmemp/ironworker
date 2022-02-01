@@ -1,3 +1,0 @@
-[default.databases.diesel]
-url = "db.sqlite"
-timeout = 10

@@ -1,21 +1,34 @@
+//! Informational structs for Ironworker applications.
+//! 
+//! These structs provide insight into worker/queue/application internals, such as number of items processed, sizes of queues, and
+//! jobs that have failed.
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::{Broker, IronworkerApplication};
 
+/// A struct describing a Worker, including the queue it's listening on, the name of the worker (auto-generated),
+/// and the last time there was a heartbeat.
 #[derive(Debug)]
 pub struct WorkerInfo {
+    /// The name of the worker, usually auto-generated
     pub name: String,
+    /// The queue that the worker is listening on
     pub queue: Option<String>,
+    /// The last time the worker posted a heartbeat to the backing datastore
     pub last_seen_at: Option<DateTime<Utc>>,
 }
 
+/// Metadata struct describing a given queue
 #[derive(Debug)]
 pub struct QueueInfo {
+    /// The name of the queue
     pub name: String,
+    /// The rough size of the queue
     pub size: usize,
 }
 
+/// Metadata struct describing 
 #[derive(Clone, Copy, Debug)]
 pub struct Stats {
     pub processed: usize,
