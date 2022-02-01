@@ -64,28 +64,25 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
     pub async fn run(&self) {
         let (shutdown_tx, _) = channel(1);
 
-        let handles = self
-            .queues
-            .iter()
-            .map(|queue| {
-                let default_count = self.config.concurrency;
-                let worker_count = self
-                    .config
-                    .queues
-                    .get(&(*queue).to_string())
-                    .map(|queue| queue.concurrency)
-                    .unwrap_or(default_count);
+        let handles = self.queues.iter().map(|queue| {
+            let default_count = self.config.concurrency;
+            let worker_count = self
+                .config
+                .queues
+                .get(&(*queue).to_string())
+                .map(|queue| queue.concurrency)
+                .unwrap_or(default_count);
 
-                let pool = IronWorkerPool::new(
-                    self.id.clone(),
-                    queue,
-                    worker_count,
-                    shutdown_tx.subscribe(),
-                    self.shared_data.clone(),
-                );
+            let pool = IronWorkerPool::new(
+                self.id.clone(),
+                queue,
+                worker_count,
+                shutdown_tx.subscribe(),
+                self.shared_data.clone(),
+            );
 
-                pool.work()
-            });
+            pool.work()
+        });
 
         let mut handles = FuturesUnordered::from_iter(handles);
 

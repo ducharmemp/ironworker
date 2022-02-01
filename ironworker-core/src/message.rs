@@ -1,13 +1,29 @@
+use std::convert::Infallible;
+
 use anymap::{CloneAny, Map};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{to_value, Value};
+use serde_json::{from_value, to_value, Value};
 use uuid::Uuid;
 
-use crate::task::TaskError;
+use crate::{task::TaskError, FromPayload};
 
 #[derive(Debug)]
 pub struct Message<T>(pub T);
+
+#[async_trait]
+impl<T> FromPayload for Message<T>
+where
+    T: for<'de> Deserialize<'de> + Serialize + 'static + Send,
+{
+    type Error = Infallible;
+
+    async fn from_payload(message: &SerializableMessage) -> Result<Self, Self::Error> {
+        let deserialized = Message(from_value::<T>(message.payload.clone()).unwrap());
+        Ok(deserialized)
+    }
+}
 
 impl<T: Serialize> From<T> for Message<T> {
     fn from(payload: T) -> Self {

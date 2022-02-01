@@ -11,8 +11,7 @@ use snafu::Snafu;
 struct Middleware;
 
 #[async_trait]
-impl IronworkerMiddleware for Middleware {
-}
+impl IronworkerMiddleware for Middleware {}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Complex {

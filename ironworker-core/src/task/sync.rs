@@ -22,67 +22,6 @@ pub struct IsFunctionSystem;
 #[derive(Clone, Copy)]
 pub struct FunctionMarker;
 
-impl<T, F, Err> IntoTask<T, (IsFunctionSystem, FunctionMarker, T)> for F
-where
-    Err: TaskError,
-    T: TaskPayload,
-    F: FnOnce(Message<T>) -> Result<(), Err> + SendSyncStatic + Clone,
-{
-    type Task = FunctionTask<(FunctionMarker, T, Err), F>;
-    fn task(self) -> Self::Task {
-        FunctionTask {
-            func: self,
-            marker: PhantomData,
-            config: Config::default(),
-        }
-    }
-}
-
-#[async_trait]
-impl<T, F, Err> Task<T> for FunctionTask<(FunctionMarker, T, Err), F>
-where
-    Err: TaskError,
-    T: TaskPayload,
-    F: FnOnce(Message<T>) -> Result<(), Err> + SendSyncStatic + Clone,
-{
-    fn name(&self) -> &'static str {
-        fn type_name_of<T>(_: T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-        type_name_of(&self.func)
-    }
-
-    fn config(&self) -> Config {
-        self.config
-    }
-
-    async fn perform_now<B: Broker>(
-        self,
-        _app: &IronworkerApplication<B>,
-        payload: T,
-    ) -> Result<(), IronworkerError> {
-        let message: Message<T> = payload.into();
-        let name = self.name();
-        let fut = self.perform(SerializableMessage::from_message(name, "inline", message));
-        fut.await.context(PerformNowSnafu {})
-    }
-
-    fn queue_as(mut self, queue_name: &'static str) -> Self {
-        self.config.queue = queue_name;
-        self
-    }
-
-    fn retries(mut self, count: usize) -> Self {
-        self.config.retries = count;
-        self
-    }
-
-    async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
-        let message: Message<T> = from_value::<T>(payload.payload).unwrap().into();
-        (self.func)(message).map_err(|e| Box::new(e) as Box<_>)
-    }
-}
-
 macro_rules! impl_task_function {
     ($($param: ident),*) => {
         impl<T, F, Err, $($param),*> IntoTask<T, (IsFunctionSystem, FunctionMarker, T, Err, $($param),*)> for F
@@ -153,6 +92,7 @@ macro_rules! impl_task_function {
     };
 }
 
+impl_task_function!();
 impl_task_function!(T1);
 impl_task_function!(T1, T2);
 impl_task_function!(T1, T2, T3);

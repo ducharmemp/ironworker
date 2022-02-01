@@ -42,7 +42,7 @@ where
 }
 
 #[async_trait]
-pub trait PerformableTask: Send + Sync {
+pub(crate) trait PerformableTask: Send + Sync {
     async fn perform(&mut self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
     fn clone_box(&self) -> Box<dyn PerformableTask>;
 }

@@ -98,9 +98,6 @@ impl WorkerState {
         }
     }
 
-    /// Returns `true` if the worker state is [`Shutdown`].
-    ///
-    /// [`Shutdown`]: WorkerState::Shutdown
     pub(crate) fn is_shutdown(&self) -> bool {
         matches!(self, Self::Shutdown)
     }
