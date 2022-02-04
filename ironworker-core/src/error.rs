@@ -11,7 +11,7 @@ pub enum IronworkerError {
     CouldNotDequeue,
     #[snafu(display("Job execution failed"))]
     PerformNowError { source: Box<dyn TaskError> },
-    #[snafu(display("Could not extract"))]
+    #[snafu(display("Could not extract state"))]
     CouldNotExtractState,
 }
 

@@ -34,6 +34,7 @@ async fn test_enqueue() {
         .unwrap();
 
     let broker = SqsBroker::from_client(client.clone());
+    broker.register_worker("test-worker", queue).await.unwrap();
 
     broker
         .enqueue(
@@ -78,6 +79,7 @@ async fn test_dequeue() {
         .unwrap();
 
     let broker = SqsBroker::from_client(client.clone());
+    broker.register_worker("test-worker", queue).await.unwrap();
 
     let enqueued_message = SerializableMessage {
         job_id: Uuid::new_v4().to_string(),
@@ -131,6 +133,7 @@ async fn test_dequeue_no_message() {
         .unwrap();
 
     let broker = SqsBroker::from_client(client.clone());
+    broker.register_worker("test-worker", queue).await.unwrap();
 
     let message = broker.dequeue(queue).await;
     assert_eq!(None, message);

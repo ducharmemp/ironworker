@@ -9,6 +9,8 @@ use snafu::prelude::*;
 pub enum SqsBrokerError {
     #[snafu(display("Could not get the url for the queue"))]
     GetQueueUrlFailed { source: SdkError<GetQueueUrlError> },
+    #[snafu(display("There was no URL available for the queue"))]
+    NoQueueUrl,
     #[snafu(display("Could not enqueue message"))]
     SendMessageFailed { source: SdkError<SendMessageError> },
     #[snafu(display("Could not dequeue message"))]

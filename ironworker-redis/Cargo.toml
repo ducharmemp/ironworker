@@ -8,21 +8,19 @@ readme = "../README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["jobs", "queues", "web"]
 categories = ["web-programming:async-job", "web-programming:job-queue"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-snafu = "0.7"
-ironworker-core = { path = "../ironworker-core" }
 async-trait = "0.1"
+chrono = { version = "0.4", features = [ "serde" ] }
+deadpool-redis = "0.10"
+futures = "0.3"
+ironworker-core = { path = "../ironworker-core" }
+redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }
 serde = "1"
 serde_json = "1"
-redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }
 uuid = { version = "0.8", features = ["v4"] }
-chrono = { version = "0.4", features = [ "serde" ] }
-futures = "0.3"
-deadpool-redis = "0.10"
 
 [dev-dependencies]
 testcontainers = "0.12.0"
+tokio = { version = "1", features = ["full"] }

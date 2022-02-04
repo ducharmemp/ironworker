@@ -251,6 +251,10 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn step(&mut self, state: &mut WorkerState) -> WorkerEvent {
         match state {
             WorkerState::Initialize => {
+                if let Err(broker_error) = self.shared_data.broker.register_worker(&self.id, &self.queue).await {
+                    // TODO: Should we panic here? Or abort? We couldn't even set up the worker
+                    error!(id=?self.id, "Registering worker failed, {:?}", broker_error);
+                }
                 if let Err(broker_error) = self.shared_data.broker.heartbeat(&self.id).await {
                     error!(id=?self.id, "Heartbeat failed, {:?}", broker_error);
                 }

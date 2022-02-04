@@ -60,6 +60,7 @@ impl<B: Broker> IronWorkerPool<B> {
         loop {
             select!(
                 _ = self.shutdown_channel.recv() => {
+                    #[allow(clippy::expect_used)]
                     self.worker_shutdown_channel.send(()).expect("All workers were dropped");
                     return;
                 },

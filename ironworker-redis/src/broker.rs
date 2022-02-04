@@ -85,9 +85,9 @@ impl Broker for RedisBroker {
         Some(item.into())
     }
 
-    async fn heartbeat(&self, application_id: &str) -> Result<(), Self::Error> {
+    async fn heartbeat(&self, worker_id: &str) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
-        let worker_key = Self::format_worker_info_key(application_id);
+        let worker_key = Self::format_worker_info_key(worker_id);
 
         pipe()
             .atomic()
@@ -98,9 +98,9 @@ impl Broker for RedisBroker {
         Ok(())
     }
 
-    async fn deregister_worker(&self, application_id: &str) -> Result<(), Self::Error> {
+    async fn deregister_worker(&self, worker_id: &str) -> Result<(), Self::Error> {
         let mut conn = self.pool.get().await.unwrap();
-        conn.del::<_, ()>(application_id).await?;
+        conn.del::<_, ()>(worker_id).await?;
         Ok(())
     }
 }

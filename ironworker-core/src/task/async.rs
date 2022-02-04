@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 
-use serde_json::from_value;
 use snafu::ResultExt;
 
 use crate::application::IronworkerApplication;
@@ -86,7 +85,7 @@ macro_rules! impl_async_task_function {
             }
 
             async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
-                let message: Message<T> = from_value::<T>(payload.payload.clone()).unwrap().into();
+                let message: Message<T> = Message::from_payload(&payload).await.unwrap();
                 $(
                     let $param = $param::from_payload(&payload).await.unwrap();
                 )*

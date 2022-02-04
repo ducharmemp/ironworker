@@ -15,6 +15,11 @@ pub use process::InProcessBroker;
 pub trait Broker: Send + Sync + 'static {
     type Error: std::fmt::Debug;
 
+    // Sets up a worker in the backing datastore. Useful for things like initalization of local structs for queues or general setup logic.
+    async fn register_worker(&self, _worker_id: &str, _queue: &str) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     /// Sends a given message to a broker. The serialization and format of the message is handled by the broker,
     /// `SerializableMessage` implements serde's Serialize/Deserialize traits. Returns a broker-specific error on failure
     /// to communicate or enqueue the task into the backing database.
@@ -36,12 +41,12 @@ pub trait Broker: Send + Sync + 'static {
     async fn dequeue(&self, from: &str) -> Option<SerializableMessage>;
 
     /// Sends a heartbeat to the backing database. If the broker is not configured to perform heartbeats, this function is a noop.
-    async fn heartbeat(&self, _application_id: &str) -> Result<(), Self::Error> {
+    async fn heartbeat(&self, _worker_id: &str) -> Result<(), Self::Error> {
         Ok(())
     }
 
     /// Removes a worker from the known set of workers from the backing store. If the broker is not configured to know about consumers, this function is a noop.
-    async fn deregister_worker(&self, _application_id: &str) -> Result<(), Self::Error> {
+    async fn deregister_worker(&self, _worker_id: &str) -> Result<(), Self::Error> {
         Ok(())
     }
 

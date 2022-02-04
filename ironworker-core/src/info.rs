@@ -1,5 +1,5 @@
 //! Informational structs for Ironworker applications.
-//! 
+//!
 //! These structs provide insight into worker/queue/application internals, such as number of items processed, sizes of queues, and
 //! jobs that have failed.
 use async_trait::async_trait;
@@ -28,7 +28,7 @@ pub struct QueueInfo {
     pub size: usize,
 }
 
-/// Metadata struct describing 
+/// Metadata struct describing
 #[derive(Clone, Copy, Debug)]
 pub struct Stats {
     pub processed: usize,

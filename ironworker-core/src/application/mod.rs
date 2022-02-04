@@ -88,6 +88,7 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
 
         select!(
             _ = self.notify_shutdown.notified() => {
+                #[allow(clippy::expect_used)]
                 shutdown_tx.send(()).expect("All workers have already been dropped");
             },
             _ = handles.next() => {},

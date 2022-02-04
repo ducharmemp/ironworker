@@ -53,6 +53,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
     }
 
     pub fn build(self) -> IronworkerApplication<B> {
+        #[allow(clippy::expect_used)]
         IronworkerApplication {
             id: self.id,
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),

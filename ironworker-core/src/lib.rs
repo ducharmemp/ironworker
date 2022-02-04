@@ -27,7 +27,9 @@
     private_in_public,
     unreachable_code,
     unreachable_patterns,
-    noop_method_call
+    noop_method_call,
+    clippy::unwrap_used,
+    clippy::expect_used
 )]
 #![forbid(non_ascii_idents, unsafe_code, unused_crate_dependencies)]
 #![warn(
@@ -35,7 +37,6 @@
     missing_copy_implementations,
     missing_debug_implementations,
     // missing_docs,
-    // unreachable_pub,
     unused_import_braces,
     unused_labels,
     unused_lifetimes,
