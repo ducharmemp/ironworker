@@ -1,8 +1,11 @@
 [package]
 name = "ironworker-bench"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 publish = false
+
+[package.metadata]
+msrv = "1.54.0"
 
 [dependencies]
 criterion = { version = "0.3.5", features = ["async_tokio"] }

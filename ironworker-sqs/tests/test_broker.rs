@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use aws_sdk_sqs::{Client, Endpoint};
 use chrono::Utc;
 use ironworker_core::{Broker, SerializableMessage};
@@ -44,7 +46,9 @@ async fn test_enqueue() {
                 queue: queue.to_string(),
                 task: "test_task".to_string(),
                 payload: Value::String("test payload".to_string()),
-                enqueued_at: Utc::now(),
+                enqueued_at: Some(Utc::now()),
+                created_at: Utc::now(),
+                at: None,
                 err: None,
                 retries: 0,
                 delivery_tag: None,
@@ -86,7 +90,9 @@ async fn test_dequeue() {
         queue: queue.to_string(),
         task: "test_task".to_string(),
         payload: Value::String("test payload".to_string()),
-        enqueued_at: Utc::now(),
+        enqueued_at: Some(Utc::now()),
+        created_at: Utc::now(),
+        at: None,
         err: None,
         retries: 0,
         delivery_tag: None,

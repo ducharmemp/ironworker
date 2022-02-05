@@ -84,7 +84,7 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
             pool.work()
         });
 
-        let mut handles = FuturesUnordered::from_iter(handles);
+        let mut handles: FuturesUnordered<_> = handles.collect();
 
         select!(
             _ = self.notify_shutdown.notified() => {

@@ -1,7 +1,9 @@
+use std::convert::TryInto;
+
 use async_trait::async_trait;
 use aws_config::Config;
 use aws_sdk_sqs::{config::Builder, Client};
-
+use chrono::Utc;
 use dashmap::DashMap;
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
@@ -54,7 +56,7 @@ impl Broker for SqsBroker {
 
         let queue_url = queue_url_output
             .queue_url
-            .ok_or_else(|| SqsBrokerError::NoQueueUrl)?;
+            .ok_or(SqsBrokerError::NoQueueUrl)?;
 
         self.queues
             .entry(queue)
@@ -65,10 +67,20 @@ impl Broker for SqsBroker {
 
     async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let queue = self.queues.get(&queue.to_string()).unwrap();
-        self.client
-            .send_message()
-            .queue_url(&queue.url)
-            .message_body(to_string(&message).unwrap())
+        let mut message_builder = self.client.send_message().queue_url(&queue.url);
+
+        if let Some(at) = message.at {
+            let delay_seconds = (Utc::now() - at).num_seconds();
+            debug_assert!(delay_seconds < 15 * 60);
+            debug_assert!(delay_seconds > 0);
+
+            message_builder =
+                message_builder.set_delay_seconds(Some(delay_seconds.try_into().unwrap()));
+        }
+
+        message_builder = message_builder.message_body(to_string(&message).unwrap());
+
+        message_builder
             .send()
             .await
             .context(SendMessageFailedSnafu)?;

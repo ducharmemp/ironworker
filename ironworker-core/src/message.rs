@@ -57,8 +57,12 @@ pub struct SerializableMessage {
     pub task: String,
     /// A JSON representation of the arguments provided to the job
     pub payload: Value,
+    /// When the job was created, at UTC time
+    pub created_at: DateTime<Utc>,
     /// When the job was enqueued, at UTC time
-    pub enqueued_at: DateTime<Utc>,
+    pub enqueued_at: Option<DateTime<Utc>>,
+    /// The scheduled time for the job. This may not be the exact time a message is processed.
+    pub at: Option<DateTime<Utc>>,
     /// If there was an error performing the job and it needs to be retried, this field will have a serializable representation of
     /// the error returned by the function
     pub err: Option<SerializableError>,
@@ -76,13 +80,17 @@ pub struct SerializableMessage {
 
 impl SerializableMessage {
     /// Converts from a given message into a serializable representation
+    #[allow(clippy::expect_used)]
     pub fn from_message<T: Serialize>(task: &str, queue: &str, Message(value): Message<T>) -> Self {
         Self {
             job_id: Uuid::new_v4().to_string(),
             task: task.to_string(),
             queue: queue.to_string(),
-            payload: to_value(value).unwrap(),
-            enqueued_at: Utc::now(),
+
+            payload: to_value(value).expect("Could not serialize message value"),
+            created_at: Utc::now(),
+            enqueued_at: None,
+            at: None,
             err: None,
             retries: 0,
             delivery_tag: None,

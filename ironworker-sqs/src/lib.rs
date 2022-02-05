@@ -16,8 +16,8 @@
     unreachable_code,
     unreachable_patterns,
     noop_method_call,
-    clippy::unwrap_used,
-    clippy::expect_used
+    // clippy::unwrap_used,
+    // clippy::expect_used
 )]
 #![forbid(non_ascii_idents, unsafe_code)]
 #![warn(

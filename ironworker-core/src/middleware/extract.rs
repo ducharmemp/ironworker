@@ -38,7 +38,8 @@ where
     type Error = Infallible;
 
     async fn from_payload(message: &SerializableMessage) -> Result<Self, Self::Error> {
-        let value = message.message_state.get::<T>().unwrap().clone();
+        #[allow(clippy::expect_used)]
+        let value = message.message_state.get::<T>().expect("Could not get value from message state, was AddMessageStateMiddleware added to the Ironworker application?").clone();
 
         Ok(Extract(value))
     }

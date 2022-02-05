@@ -55,7 +55,7 @@ impl<B: Broker> IronWorkerPool<B> {
         info!(id=?self.id, queue=?self.queue, "Booting worker pool with {} workers", self.worker_count);
         let worker_handles = (0..self.worker_count).map(|_| self.spawn_worker());
 
-        let mut worker_handles = FuturesUnordered::from_iter(worker_handles);
+        let mut worker_handles: FuturesUnordered<_> = worker_handles.collect();
 
         loop {
             select!(

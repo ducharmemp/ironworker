@@ -30,7 +30,7 @@ pub(crate) enum WorkerState {
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) enum WorkerEvent {
     Initialized,
-    TaskReceived(SerializableMessage),
+    TaskReceived(Box<SerializableMessage>),
     NoTaskReceived,
     ShouldTryHeartbeat,
     HeartBeatCompleted,
@@ -60,7 +60,7 @@ impl WorkerState {
             (Self::WaitForTask, WorkerEvent::ShouldTryHeartbeat) => Self::HeartBeat,
 
             // Pre task execution
-            (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(message),
+            (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(*message),
             (Self::PreExecute(message), WorkerEvent::PreExecuteCompleted) => Self::Execute(message),
 
             // Task execution
@@ -128,7 +128,7 @@ impl<B: Broker> WorkerStateMachine<B> {
             message = self.shared_data.broker.dequeue(self.queue) => {
                 if let Some(message) = message {
                     debug!(id=?self.id, "Received job {}", message.job_id);
-                    WorkerEvent::TaskReceived(message)
+                    WorkerEvent::TaskReceived(Box::new(message))
                 } else {
                     debug!(id=?self.id, "No job received, polling again");
                     WorkerEvent::NoTaskReceived
@@ -150,6 +150,8 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn execute(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
         let handler_entry = self.shared_data.tasks.get(&message.task.as_str());
+        // This is safe because we already check the tasks in pre-execute for the task key
+        #[allow(clippy::unwrap_used)]
         let (handler, config) = handler_entry.unwrap();
         let mut handler = handler.clone_box();
         let max_run_time = config.max_run_time;
@@ -195,6 +197,8 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn execute_failed(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
         error!(id=?self.id, "Task {} failed", message.job_id);
         let handler_entry = self.shared_data.tasks.get(&message.task.as_str());
+        // This is safe because we already know that we have a handler for this
+        #[allow(clippy::unwrap_used)]
         let (_, handler_config) = handler_entry.unwrap();
         let retries = handler_config.retries;
         let should_discard = false;
@@ -251,7 +255,12 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn step(&mut self, state: &mut WorkerState) -> WorkerEvent {
         match state {
             WorkerState::Initialize => {
-                if let Err(broker_error) = self.shared_data.broker.register_worker(&self.id, &self.queue).await {
+                if let Err(broker_error) = self
+                    .shared_data
+                    .broker
+                    .register_worker(&self.id, self.queue)
+                    .await
+                {
                     // TODO: Should we panic here? Or abort? We couldn't even set up the worker
                     error!(id=?self.id, "Registering worker failed, {:?}", broker_error);
                 }
@@ -311,6 +320,7 @@ impl<B: Broker> WorkerStateMachine<B> {
 #[cfg(test)]
 mod test {
     use std::collections::HashMap;
+    use std::iter::FromIterator;
     use std::sync::Mutex;
 
     use async_trait::async_trait;
@@ -383,7 +393,7 @@ mod test {
 
         let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
         let event = worker.wait_for_task().await;
-        assert_eq!(event, WorkerEvent::TaskReceived(message));
+        assert_eq!(event, WorkerEvent::TaskReceived(Box::new(message)));
     }
 
     #[tokio::test]
@@ -404,7 +414,7 @@ mod test {
             StateTest {
                 from: WorkerState::WaitForTask,
                 to: WorkerState::PreExecute(enqueued_successful_message()),
-                event: WorkerEvent::TaskReceived(enqueued_successful_message()),
+                event: WorkerEvent::TaskReceived(Box::new(enqueued_successful_message())),
             },
             StateTest {
                 from: WorkerState::WaitForTask,
