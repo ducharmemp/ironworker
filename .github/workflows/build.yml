@@ -51,6 +51,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
+
   rustfmt-and-clippy:
     name: "🙈 Check linting and run clippy"
     runs-on: ubuntu-latest
@@ -62,9 +63,7 @@ jobs:
           profile: minimal
           components: clippy, rustfmt
           override: true
-      - name: Install cargo-hack
-        run: cargo install cargo-hack
-        if: ${{matrix.rust == 'nightly'}}
+      
       - name: Cache cargo registry
         uses: actions/cache@v2
         with:
@@ -73,24 +72,13 @@ jobs:
             ~/.cargo/git
           key: clippy-cargo-${{ hashFiles('**/Cargo.toml') }}
       - uses: actions-rs/clippy-check@v1
-        if: ${{matrix.rust == 'stable'}}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
       - uses: actions-rs/cargo@v1
-        if: ${{matrix.rust == 'stable'}}
         with:
           command: fmt
           args: -- --check
-      - name: "check --all-features -Z minimal-versions"
-        if: ${{matrix.rust == 'nightly'}}
-        run: |
-          # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
-          # from determining minimal versions based on dev-dependencies.
-          cargo hack --remove-dev-deps --workspace
-          # Update Cargo.lock to minimal version dependencies.
-          cargo update -Z minimal-versions
-          cargo hack check --all-features --ignore-private
 
   doc:
     name: "🙊 Run docs"
