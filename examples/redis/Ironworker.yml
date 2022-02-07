@@ -4,12 +4,12 @@ queues:
   default:
     concurrency: 25
   critical:
-    concurrency: 50
+    concurrency: 10
   low:
     concurrency: 5
   fake:
-    concurrency: 10
+    concurrency: 5
   complex:
-    concurrency: 10
+    concurrency: 5
   async:
-    concurrency: 10
+    concurrency: 5

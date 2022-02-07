@@ -154,7 +154,8 @@ impl<B: Broker> WorkerStateMachine<B> {
         #[allow(clippy::unwrap_used)]
         let (handler, config) = handler_entry.unwrap();
         let mut handler = handler.clone_box();
-        let max_run_time = config.max_run_time;
+        let config = config.unwrap();
+        let max_run_time = config.timeout;
         let task_future = timeout(
             Duration::from_secs(max_run_time),
             handler.perform(message.clone()),
@@ -200,6 +201,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         // This is safe because we already know that we have a handler for this
         #[allow(clippy::unwrap_used)]
         let (_, handler_config) = handler_entry.unwrap();
+        let handler_config = handler_config.unwrap();
         let retries = handler_config.retries;
         let should_discard = false;
         let queue = handler_config.queue;
@@ -441,14 +443,15 @@ mod test {
                 to: WorkerState::PostExecute(enqueued_successful_message()),
                 event: WorkerEvent::ExecuteCompleted,
             },
-            // TODO: This specific transition is failing because we mutate the message in-place in the worker with the failure. In this test we have no such mutation so the assertion
-            // of the serializable error doesn't work
-
-            // StateTest {
-            //     from: WorkerState::Execute(enqueued_successful_message()),
-            //     to: WorkerState::ExecuteFailed(failed_message()),
-            //     event: WorkerEvent::ExecuteFailed,
-            // },
+            StateTest {
+                from: WorkerState::Execute(enqueued_successful_message()),
+                to: WorkerState::ExecuteFailed({
+                    let mut message = failed_message();
+                    message.err = None;
+                    message
+                }),
+                event: WorkerEvent::ExecuteFailed,
+            },
             StateTest {
                 from: WorkerState::PostExecute(successful_message()),
                 to: WorkerState::WaitForTask,

@@ -51,7 +51,7 @@ mod config;
 mod error;
 mod from_payload;
 pub mod info;
-mod message;
+pub(crate) mod message;
 pub mod middleware;
 mod task;
 
@@ -68,6 +68,7 @@ pub(crate) mod test {
     use chrono::{SubsecRound, Utc};
     use serde::Serialize;
     use snafu::prelude::*;
+    use uuid::Uuid;
 
     use crate::{
         message::SerializableError, task::PerformableTask, IntoTask, Message, SerializableMessage,
@@ -102,7 +103,7 @@ pub(crate) mod test {
             enqueued_at: None,
             created_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
-            job_id: "test-id".to_string(),
+            job_id: Uuid::parse_str("8aa34936-1f60-404f-8cbb-973123e6744e").unwrap(), // Always have the same ID for jobs when testing the crate
             task: "task".to_string(),
             payload: 123.into(),
             at: None,

@@ -15,6 +15,8 @@ ironworker-redis = { path = "../ironworker-redis" }
 redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }
 snafu = "0.7"
 tokio = { version = "1", features = ["full"] }
+testcontainers = "0.12.0"
+futures = "0.3"
 
 [[bench]]
 name = "process_redis"

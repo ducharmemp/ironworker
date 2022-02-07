@@ -1,8 +1,9 @@
 use anymap::{CloneAny, Map};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
-use serde_json::{from_value, to_value, Error, Value};
+use serde_json::{from_value, Error, Value};
 use uuid::Uuid;
 
 use crate::{task::TaskError, FromPayload};
@@ -47,10 +48,12 @@ impl SerializableError {
 /// Serializable representation of a job given to a broker. A broker receiving this message should
 /// persist it in the way that makes the most sense for the backing datastore. Most of the time
 /// this is going to mean converting the whole message to a JSON string.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Builder)]
+#[builder(pattern = "mutable")]
 pub struct SerializableMessage {
     /// The unique identifier of the job.
-    pub job_id: String,
+    #[builder(default = "Uuid::new_v4()")]
+    pub job_id: Uuid,
     /// The queue that the message is destined for
     pub queue: String,
     /// The performing function name
@@ -58,45 +61,30 @@ pub struct SerializableMessage {
     /// A JSON representation of the arguments provided to the job
     pub payload: Value,
     /// When the job was created, at UTC time
+    #[builder(default = "Utc::now()")]
     pub created_at: DateTime<Utc>,
     /// When the job was enqueued, at UTC time
+    #[builder(default)]
     pub enqueued_at: Option<DateTime<Utc>>,
     /// The scheduled time for the job. This may not be the exact time a message is processed.
+    #[builder(default)]
     pub at: Option<DateTime<Utc>>,
     /// If there was an error performing the job and it needs to be retried, this field will have a serializable representation of
     /// the error returned by the function
+    #[builder(default)]
     pub err: Option<SerializableError>,
     /// An incrementing number representing the number of times this job has been retried
     pub retries: usize,
     /// A broker-specific field, mainly for backends like SQS or RabbitMQ where a message needs to be acknowledged with a specific identifier provided by
     /// the datastore.
     #[serde(default)]
+    #[builder(default)]
     pub delivery_tag: Option<String>,
 
     /// A data bag, useful for middlewares to add state that should be `Extract`-ed when the task is run
     #[serde(skip)]
+    #[builder(default)]
     pub message_state: Map<dyn CloneAny + Send + Sync>,
-}
-
-impl SerializableMessage {
-    /// Converts from a given message into a serializable representation
-    #[allow(clippy::expect_used)]
-    pub fn from_message<T: Serialize>(task: &str, queue: &str, Message(value): Message<T>) -> Self {
-        Self {
-            job_id: Uuid::new_v4().to_string(),
-            task: task.to_string(),
-            queue: queue.to_string(),
-
-            payload: to_value(value).expect("Could not serialize message value"),
-            created_at: Utc::now(),
-            enqueued_at: None,
-            at: None,
-            err: None,
-            retries: 0,
-            delivery_tag: None,
-            message_state: Default::default(),
-        }
-    }
 }
 
 impl PartialEq for SerializableMessage {

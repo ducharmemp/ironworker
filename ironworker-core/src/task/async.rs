@@ -2,14 +2,11 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
 
-use snafu::ResultExt;
-
-use crate::application::IronworkerApplication;
-use crate::error::PerformNowSnafu;
 use crate::from_payload::FromPayload;
 use crate::message::{Message, SerializableMessage};
-use crate::{Broker, IntoTask, IronworkerError, Task};
+use crate::{IntoTask, Task};
 
 use super::base::{SendSyncStatic, TaskError, TaskPayload};
 use super::config::Config;
@@ -65,23 +62,23 @@ macro_rules! impl_async_task_function {
             }
 
             fn queue_as(mut self, queue_name: &'static str) -> Self {
-                self.config.queue = queue_name;
+                self.config.queue.replace(queue_name);
+                self
+            }
+
+            fn wait_until(mut self, future_time: DateTime<Utc>) -> Self {
+                self.config.at.replace(future_time);
+                self
+            }
+
+            fn wait(mut self, delay: Duration) -> Self {
+                self.config.at.replace(Utc::now() + delay);
                 self
             }
 
             fn retries(mut self, count: usize) -> Self {
-                self.config.retries = count;
+                self.config.retries.replace(count);
                 self
-            }
-
-            async fn perform_now<B: Broker>(
-                self,
-                _app: &IronworkerApplication<B>,
-                payload: T,
-            ) -> Result<(), IronworkerError> {
-                let message: Message<T> = payload.into();
-                let name = self.name();
-                self.perform(SerializableMessage::from_message(name, "inline", message)).await.context( PerformNowSnafu {})
             }
 
             async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>> {
@@ -178,9 +175,9 @@ mod test {
             Ok(())
         }
 
-        assert_eq!(some_task.task().config().queue, "default");
+        assert_eq!(some_task.task().config().queue, None);
         let tsk = some_task.task().queue_as("low");
-        assert_eq!(tsk.config().queue, "low");
+        assert_eq!(tsk.config().queue, Some("low"));
     }
 
     #[tokio::test]
@@ -195,8 +192,8 @@ mod test {
             Ok(())
         }
 
-        assert_eq!(some_task.task().config().retries, 0);
+        assert_eq!(some_task.task().config().retries, None);
         let tsk = some_task.task().retries(5);
-        assert_eq!(tsk.config().retries, 5);
+        assert_eq!(tsk.config().retries, Some(5));
     }
 }

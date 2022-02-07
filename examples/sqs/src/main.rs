@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .register_middleware(Middleware)
         .build();
 
-    // my_task.task().perform_now(&app, 123).await.unwrap();
+    my_task.task().perform_now(&app, 123).await.unwrap();
     my_task.task().perform_later(&app, 123).await?;
     my_complex_task
         .task()

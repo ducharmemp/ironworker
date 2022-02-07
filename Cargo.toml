@@ -1,2 +1,5 @@
 [workspace]
 members = ["examples/*", "ironworker*"]
+
+[profile.bench]
+debug = true

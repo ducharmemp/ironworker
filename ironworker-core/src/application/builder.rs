@@ -22,12 +22,14 @@ pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
 }
 
 impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
+    /// Registers a task for later use when processing messages.
     #[must_use = "An application must be built in order to use"]
     pub fn register_task<T: Serialize + Send + Into<Message<T>> + 'static, Tsk: Task<T> + Send>(
         mut self,
         task: Tsk,
     ) -> IronworkerApplicationBuilder<B> {
-        let task_config = Task::config(&task);
+        let task_config = task.config();
+        let task_config = task_config.unwrap();
         self.queues.insert(task_config.queue);
 
         self.tasks.entry(task.name()).or_insert_with(|| {

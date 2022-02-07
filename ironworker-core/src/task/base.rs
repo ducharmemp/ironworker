@@ -2,13 +2,16 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use snafu::AsErrorSource;
+use serde_json::to_value;
+use snafu::{AsErrorSource, ResultExt};
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
-use crate::message::{Message, SerializableMessage};
-use crate::IronworkerError;
+use crate::error::PerformNowSnafu;
+use crate::message::{Message, SerializableMessageBuilder};
+use crate::{IronworkerError, SerializableMessage};
 
 use super::config::Config;
 use super::IntoPerformableTask;
@@ -38,21 +41,37 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
     fn queue_as(self, queue_name: &'static str) -> Self;
     #[must_use]
     fn retries(self, count: usize) -> Self;
+    #[must_use]
+    fn wait_until(self, future_time: DateTime<Utc>) -> Self;
+    #[must_use]
+    fn wait(self, delay: Duration) -> Self;
 
     async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
 
     async fn perform_now<B: Broker + 'static>(
         self,
-        app: &IronworkerApplication<B>,
+        _app: &IronworkerApplication<B>,
         payload: T,
-    ) -> Result<(), IronworkerError>;
+    ) -> Result<(), IronworkerError> {
+        let unwrapped_config = self.config().unwrap();
+        let message = SerializableMessageBuilder::default()
+            .task(self.name().to_string())
+            .queue("inline".to_string())
+            .payload(to_value(payload).unwrap())
+            .at(unwrapped_config.at)
+            .retries(0)
+            .build()
+            .unwrap();
+        self.perform(message).await.context(PerformNowSnafu {})
+    }
 
+    /// Enqueues a task in a backing datastore
     async fn perform_later<B: Broker + 'static>(
         self,
         app: &IronworkerApplication<B>,
         payload: T,
     ) -> Result<(), IronworkerError> {
-        let fut = app.enqueue(self.name(), payload);
+        let fut = app.enqueue(self.name(), payload, self.config());
         fut.await
     }
 

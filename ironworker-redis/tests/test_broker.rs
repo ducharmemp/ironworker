@@ -17,7 +17,7 @@ async fn test_enqueue() {
         .enqueue(
             queue,
             SerializableMessage {
-                job_id: Uuid::new_v4().to_string(),
+                job_id: Uuid::new_v4(),
                 queue: queue.to_string(),
                 task: "test_task".to_string(),
                 payload: Value::String("test payload".to_string()),
@@ -42,7 +42,7 @@ async fn test_dequeue() {
     let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port)).await;
     let queue = "test_dequeue";
     let enqueued_message = SerializableMessage {
-        job_id: Uuid::new_v4().to_string(),
+        job_id: Uuid::new_v4(),
         queue: queue.to_string(),
         task: "test_task".to_string(),
         payload: Value::String("test payload".to_string()),
@@ -85,7 +85,7 @@ async fn test_deadletter() {
         .deadletter(
             queue,
             SerializableMessage {
-                job_id: Uuid::new_v4().to_string(),
+                job_id: Uuid::new_v4(),
                 queue: queue.to_string(),
                 task: "test_task".to_string(),
                 payload: Value::String("test payload".to_string()),

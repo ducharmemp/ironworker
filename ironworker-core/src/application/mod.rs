@@ -9,13 +9,16 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use serde::Serialize;
 
+use serde_json::to_value;
 use tokio::select;
 use tokio::sync::broadcast::channel;
 use tokio::sync::Notify;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
-use crate::{Broker, IronworkerError, Message, SerializableMessage};
+use crate::message::SerializableMessageBuilder;
+use crate::task::Config as TaskConfig;
+use crate::{Broker, IronworkerError, Message};
 pub use builder::IronworkerApplicationBuilder;
 use shared::SharedData;
 use worker::IronWorkerPool;
@@ -42,19 +45,29 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
         &self,
         task: &str,
         payload: P,
+        task_config: TaskConfig,
     ) -> Result<(), IronworkerError> {
-        let message: Message<P> = payload.into();
         let handler_config = {
             let (_, handler_config) = self.shared_data.tasks.get(task).unwrap();
             *handler_config
         };
+        let merged_config = task_config.merge(handler_config);
+        let unwrapped_config = merged_config.unwrap();
 
-        let serializable = SerializableMessage::from_message(task, handler_config.queue, message);
+        let serializable = SerializableMessageBuilder::default()
+            .task(task.to_string())
+            .queue(unwrapped_config.queue.to_string())
+            .payload(to_value(payload).unwrap())
+            .at(unwrapped_config.at)
+            .retries(0)
+            .build()
+            .unwrap();
+
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
 
         self.shared_data
             .broker
-            .enqueue(handler_config.queue, serializable)
+            .enqueue(unwrapped_config.queue, serializable)
             .await
             .map_err(|_| IronworkerError::CouldNotEnqueue)?;
         Ok(())

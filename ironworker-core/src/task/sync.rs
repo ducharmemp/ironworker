@@ -1,13 +1,11 @@
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use snafu::ResultExt;
+use chrono::{DateTime, Duration, Utc};
 
-use crate::application::IronworkerApplication;
-use crate::error::PerformNowSnafu;
 use crate::from_payload::FromPayload;
 use crate::message::{Message, SerializableMessage};
-use crate::{Broker, IntoTask, IronworkerError, Task};
+use crate::{IntoTask, Task};
 
 use super::base::{SendSyncStatic, TaskError, TaskPayload};
 use super::config::Config;
@@ -60,23 +58,23 @@ macro_rules! impl_task_function {
                 self.config.clone()
             }
 
-            async fn perform_now<B: Broker>(
-                self,
-                _app: &IronworkerApplication<B>,
-                payload: T,
-            ) -> Result<(), IronworkerError> {
-                let message: Message<T> = payload.into();
-                let name = self.name();
-                self.perform(SerializableMessage::from_message(name, "inline", message)).await.context( PerformNowSnafu {})
-            }
-
             fn queue_as(mut self, queue_name: &'static str) -> Self {
-                self.config.queue = queue_name;
+                self.config.queue.replace(queue_name);
                 self
             }
 
             fn retries(mut self, count: usize) -> Self {
-                self.config.retries = count;
+                self.config.retries.replace(count);
+                self
+            }
+
+            fn wait_until(mut self, future_time: DateTime<Utc>) -> Self {
+                self.config.at.replace(future_time);
+                self
+            }
+
+            fn wait(mut self, delay: Duration) -> Self {
+                self.config.at.replace(Utc::now() + delay);
                 self
             }
 
@@ -114,6 +112,9 @@ mod test {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
+    use serde_json::to_value;
+
+    use crate::message::SerializableMessageBuilder;
     use crate::{broker::InProcessBroker, test::TestEnum, IronworkerApplicationBuilder};
 
     use super::*;
@@ -128,15 +129,14 @@ mod test {
             Ok(())
         });
 
-        let payload: Message<u32> = 123.into();
-        let _res = status_mock
-            .task()
-            .perform(SerializableMessage::from_message(
-                "status_mock",
-                "default",
-                payload,
-            ))
-            .await;
+        let message = SerializableMessageBuilder::default()
+            .task("status_mock".to_string())
+            .queue("default".to_string())
+            .payload(to_value(123).unwrap())
+            .retries(0)
+            .build()
+            .unwrap();
+        let _res = status_mock.task().perform(message).await;
         assert!(status_mock_called.load(std::sync::atomic::Ordering::Relaxed))
     }
 
@@ -175,9 +175,9 @@ mod test {
             Ok(())
         }
 
-        assert_eq!(some_task.task().config().queue, "default");
+        assert_eq!(some_task.task().config().queue, None);
         let tsk = some_task.task().queue_as("low");
-        assert_eq!(tsk.config().queue, "low");
+        assert_eq!(tsk.config().queue, Some("low"));
     }
 
     #[tokio::test]
@@ -192,8 +192,8 @@ mod test {
             Ok(())
         }
 
-        assert_eq!(some_task.task().config().retries, 0);
+        assert_eq!(some_task.task().config().retries, None);
         let tsk = some_task.task().retries(5);
-        assert_eq!(tsk.config().retries, 5);
+        assert_eq!(tsk.config().retries, Some(5));
     }
 }
