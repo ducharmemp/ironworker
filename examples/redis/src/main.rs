@@ -50,7 +50,7 @@ enum TestEnum {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let app = IronworkerApplicationBuilder::default()
-        .broker(RedisBroker::new("redis://localhost:6379").await)
+        .broker(RedisBroker::new("redis://localhost:6379").await.unwrap())
         .register_task(my_task.task().queue_as("fake").retries(2))
         .register_task(my_complex_task.task().queue_as("complex"))
         .register_task(my_async_task.task().queue_as("async"))
@@ -69,11 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 
-    // for _ in 0..100_000 {
-    //     my_panicking_task.task().perform_later(&app, 123).await?;
-    //     my_task.task().perform_later(&app, 123).await?;
-    //     my_async_task.task().perform_later(&app, 123).await?;
-    // }
+    for _ in 0..100_000 {
+        my_panicking_task.task().perform_later(&app, 123).await?;
+        my_task.task().perform_later(&app, 123).await?;
+        my_async_task.task().perform_later(&app, 123).await?;
+    }
 
     app.run().await;
 

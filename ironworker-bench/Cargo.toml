@@ -9,7 +9,6 @@ msrv = "1.54.0"
 
 [dependencies]
 criterion = { version = "0.3.5", features = ["async_tokio"] }
-deadpool-redis = "0.10"
 ironworker-core = { path = "../ironworker-core" }
 ironworker-redis = { path = "../ironworker-redis" }
 redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }

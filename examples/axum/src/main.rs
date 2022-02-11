@@ -52,7 +52,7 @@ async fn main() {
 
     let ironworker = Arc::new(
         IronworkerApplicationBuilder::default()
-            .broker(RedisBroker::new("redis://localhost:6379").await)
+            .broker(RedisBroker::new("redis://localhost:6379").await.unwrap())
             .register_task(log_todos.task().retries(2))
             .register_middleware(AddMessageStateMiddleware::new(db.clone()))
             .build(),

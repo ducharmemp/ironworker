@@ -11,7 +11,9 @@ async fn test_enqueue() {
     let docker = clients::Cli::default();
     let node = docker.run(images::redis::Redis::default().with_tag("latest"));
     let host_port = node.get_host_port(6379).unwrap();
-    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port)).await;
+    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port))
+        .await
+        .unwrap();
     let queue = "test_enqueue";
     broker
         .enqueue(
@@ -39,7 +41,9 @@ async fn test_dequeue() {
     let docker = clients::Cli::default();
     let node = docker.run(images::redis::Redis::default().with_tag("latest"));
     let host_port = node.get_host_port(6379).unwrap();
-    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port)).await;
+    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port))
+        .await
+        .unwrap();
     let queue = "test_dequeue";
     let enqueued_message = SerializableMessage {
         job_id: Uuid::new_v4(),
@@ -68,7 +72,9 @@ async fn test_dequeue_no_message() {
     let docker = clients::Cli::default();
     let node = docker.run(images::redis::Redis::default().with_tag("latest"));
     let host_port = node.get_host_port(6379).unwrap();
-    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port)).await;
+    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port))
+        .await
+        .unwrap();
     let queue = "test_dequeue_no_message";
     let message = broker.dequeue(queue).await;
     assert_eq!(None, message);
@@ -79,7 +85,9 @@ async fn test_deadletter() {
     let docker = clients::Cli::default();
     let node = docker.run(images::redis::Redis::default().with_tag("latest"));
     let host_port = node.get_host_port(6379).unwrap();
-    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port)).await;
+    let broker = RedisBroker::new(&format!("redis://localhost:{}", host_port))
+        .await
+        .unwrap();
     let queue = "test_deadletter";
     broker
         .deadletter(

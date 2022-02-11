@@ -16,14 +16,13 @@ msrv = "1.54.0"
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = [ "serde" ] }
-deadpool-redis = "0.10"
 futures = "0.3"
 ironworker-core = { path = "../ironworker-core" }
-redis = { version = "0.21", features = [ "tokio-comp", "aio" ] }
+redis = { version = "0.21", features = [ "tokio-comp", "aio", "connection-manager" ] }
 serde = "1"
 serde_json = "1"
 uuid = { version = "0.8", features = ["v4"] }
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 testcontainers = "0.12.0"
-tokio = { version = "1", features = ["full"] }

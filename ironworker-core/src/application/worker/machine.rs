@@ -122,6 +122,7 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn wait_for_task(&mut self) -> WorkerEvent {
         select!(
+            biased;
             _ = self.heartbeat_interval.tick() => {
                 WorkerEvent::ShouldTryHeartbeat
             },
@@ -133,7 +134,7 @@ impl<B: Broker> WorkerStateMachine<B> {
                     debug!(id=?self.id, "No job received, polling again");
                     WorkerEvent::NoTaskReceived
                 }
-            }
+            },
         )
     }
 
