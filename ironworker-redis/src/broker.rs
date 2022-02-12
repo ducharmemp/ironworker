@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -23,16 +22,12 @@ impl RedisBroker {
     pub async fn new(uri: &str) -> RedisResult<RedisBroker> {
         let client = Client::open(uri)?;
         let connection = client.get_tokio_connection_manager().await?;
-        Ok(Self {
-            connection,
-        })
+        Ok(Self { connection })
     }
 
     pub async fn from_cliet(client: &Client) -> RedisResult<Self> {
         let connection = client.get_tokio_connection_manager().await?;
-        Ok(Self {
-            connection
-        })
+        Ok(Self { connection })
     }
 }
 
@@ -48,6 +43,14 @@ impl RedisBroker {
     fn format_queue_key(queue_name: &str) -> String {
         format!("queue:{}", queue_name)
     }
+
+    fn format_processed_stats_key() -> String {
+        "ironworker:processed".to_string()
+    }
+
+    fn format_failed_stats_key() -> String {
+        "ironworker:failed".to_string()
+    }
 }
 
 #[async_trait]
@@ -56,10 +59,11 @@ impl Broker for RedisBroker {
 
     async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
         let mut conn = self.connection.clone();
+
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
         conn.lpush::<_, _, ()>(&queue_key, message).await?;
-        conn.publish::<&str, &str, ()>(&queue_key, "publish").await?;
+
         Ok(())
     }
 
@@ -80,10 +84,13 @@ impl Broker for RedisBroker {
         let mut conn = self.connection.clone();
         let from = Self::format_queue_key(from);
 
-        let items = conn.rpop::<_, Vec<RedisMessage>>(&from, NonZeroUsize::new(1)).await;
-        let mut items = items.ok()?;
-        if let Some(item) = items.pop() {
-            return Some(item.into())
+        let item = conn
+            .rpop::<_, RedisMessage>(&from, None)
+            .await
+            .ok();
+
+        if let Some(item) = item {
+            return Some(item.into());
         }
 
         tokio::time::sleep(Duration::from_millis(5000)).await;
@@ -94,12 +101,27 @@ impl Broker for RedisBroker {
         let mut conn = self.connection.clone();
         let worker_key = Self::format_worker_info_key(worker_id);
 
-        pipe()
-            .atomic()
-            .hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis())
-            .expire(&worker_key, 60)
-            .query_async::<_, ()>(&mut conn)
+        conn.hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis()).await?;
+        conn.expire(&worker_key, 60).await?;
+        Ok(())
+    }
+
+    async fn acknowledge_processed(
+        &self,
+        _from: &str,
+        message: SerializableMessage,
+    ) -> Result<(), Self::Error> {
+        let mut connection = self.connection.clone();
+        let is_retried = message.err.is_some();
+
+        connection
+            .incr::<_, _, ()>(Self::format_processed_stats_key(), 1)
             .await?;
+        if is_retried {
+            connection
+                .incr::<_, _, ()>(Self::format_failed_stats_key(), 1)
+                .await?;
+        }
         Ok(())
     }
 
@@ -160,16 +182,46 @@ impl BrokerInfo for RedisBroker {
     }
 
     async fn stats(&self) -> Stats {
+        let mut connection = self.connection.clone();
+        let processed = connection
+            .get::<_, u64>(Self::format_processed_stats_key())
+            .await
+            .unwrap_or_default();
+        let failed = connection
+            .get::<_, u64>(Self::format_failed_stats_key())
+            .await
+            .unwrap_or_default();
+
         Stats {
-            processed: 0,
-            failed: 0,
+            processed,
+            failed,
             scheduled: 0,
             enqueued: 0,
         }
     }
 
     async fn deadlettered(&self) -> Vec<DeadletteredInfo> {
-        vec![]
+        let mut connection = self.connection.clone();
+        let failed_queues = connection
+            .keys::<_, Vec<String>>(Self::format_deadletter_key("*"))
+            .await
+            .unwrap_or_default();
+            
+        let futs: Vec<_> = failed_queues.into_iter().map(|queue| async {
+            let mut conn = self.connection.clone();
+            let messages = conn
+                .lrange::<_, Vec<RedisMessage>>(queue, 0, -1)
+                .await
+                .unwrap_or_default();
+            let messages: Vec<SerializableMessage> = messages.into_iter().map(Into::into).collect();
+            let messages: Vec<DeadletteredInfo> = messages.into_iter().map(|message| DeadletteredInfo {
+                err: message.err,
+                job_id: message.job_id,
+            }).collect();
+            messages
+        }).collect();
+
+        future::join_all(futs).await.into_iter().flatten().collect()
     }
 
     async fn scheduled(&self) -> Vec<ScheduledInfo> {

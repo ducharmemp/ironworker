@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Failed{% endblock %}
+
+{% block content %}
+<h2 class="title is-2">Failed</h2>
+<div class="section">
+  <table class="table is-striped is-bordered is-hoverable">
+    <tbody>
+      <thead>
+        <th>Job Id</th>
+        <th>Error</th>
+      </thead>
+      {% for job in deadlettered %}
+      <tr>
+        <td>{{job.job_id}}</td>
+        <td>
+          {% match job.err %}
+          {% when Some with (val) %}
+          {{val.message}}
+          {% when None %}
+          ""
+          {%endmatch %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

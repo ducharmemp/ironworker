@@ -46,7 +46,7 @@ async fn main() {
     if std::env::var_os("RUST_LOG").is_none() {
         std::env::set_var("RUST_LOG", "example_todos=debug,tower_http=debug")
     }
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
 
     let db = Db::default();
 
@@ -60,6 +60,7 @@ async fn main() {
 
     // Compose the routes
     let app = Router::new()
+        .merge(ironworker_axum::endpoints(ironworker.clone()))
         .route("/todos", get(todos_index).post(todos_create))
         .route("/todos/:id", patch(todos_update).delete(todos_delete))
         // Add middleware to all routes

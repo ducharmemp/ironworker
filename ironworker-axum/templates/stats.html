@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Stats{% endblock %}
+
+{% block content %}
+<h2 class="title is-2">Stats</h2>
+<div class="section">
+    <table class="table is-striped is-bordered is-hoverable">
+        <tbody>
+            <tr>
+                <td>Processed</td>
+                <td>{{processed}}</td>
+            </tr>
+            <tr>
+                <td>Failed</td>
+                <td>{{failed}}</td>
+            </tr>
+            <tr>
+                <td>Pending</td>
+                <td>{{enqueued}}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

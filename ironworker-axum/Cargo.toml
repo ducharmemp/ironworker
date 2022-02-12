@@ -1,8 +1,8 @@
 [package]
-name = "ironworker-actix"
+name = "ironworker-axum"
 version = "0.1.0"
 edition = "2018"
-description = "Actix integration for Ironworker"
+description = "Axum integration for Ironworker"
 repository = "https://github.com/ducharmemp/ironworker"
 readme = "../README.md"
 license = "MIT OR Apache-2.0"
@@ -14,3 +14,7 @@ categories = ["web-programming:async-job", "web-programming:job-queue"]
 msrv = "1.54.0"
 
 [dependencies]
+askama_axum = "0.1"
+askama = "0.11"
+axum = "0.4"
+ironworker-core = { path = "../ironworker-core" }

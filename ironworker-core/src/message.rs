@@ -34,13 +34,13 @@ impl<T: Serialize> From<T> for Message<T> {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SerializableError {
-    message: String,
+    pub message: String,
 }
 
 impl SerializableError {
     pub(crate) fn new(err: Box<dyn TaskError>) -> Self {
         Self {
-            message: format!("{:?}", err),
+            message: format!("{:#?}", err),
         }
     }
 }

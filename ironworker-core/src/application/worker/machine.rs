@@ -22,7 +22,6 @@ pub(crate) enum WorkerState {
     ExecuteFailed(SerializableMessage),
     RetryTask(&'static str, SerializableMessage),
     DeadletterTask(&'static str, SerializableMessage),
-    PostFailure(SerializableMessage),
     PreShutdown(Option<SerializableMessage>),
     Shutdown,
 }
@@ -43,7 +42,6 @@ pub(crate) enum WorkerEvent {
     PostExecuteCompleted,
     RetryCompleted,
     DeadletterCompleted,
-    PostFailureCompleted,
     ShouldShutdown,
     Shutdown,
 }
@@ -71,16 +69,15 @@ impl WorkerState {
             (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted) => Self::WaitForTask,
 
             // Task Failure
-            (Self::PostFailure(_), WorkerEvent::PostFailureCompleted) => Self::WaitForTask,
-            (Self::RetryTask(_, message), WorkerEvent::RetryCompleted)
-            | (Self::DeadletterTask(_, message), WorkerEvent::DeadletterCompleted) => {
-                Self::PostFailure(message)
-            }
             (Self::ExecuteFailed(message), WorkerEvent::ShouldRetry(queue)) => {
                 Self::RetryTask(queue, message)
             }
             (Self::ExecuteFailed(message), WorkerEvent::ShouldDeadletter(queue)) => {
                 Self::DeadletterTask(queue, message)
+            }
+            (Self::RetryTask(_, message), WorkerEvent::RetryCompleted)
+            | (Self::DeadletterTask(_, message), WorkerEvent::DeadletterCompleted) => {
+                Self::PostExecute(message)
             }
 
             // Worker told to stop
@@ -88,7 +85,6 @@ impl WorkerState {
                 Self::PreExecute(message)
                 | Self::Execute(message)
                 | Self::PostExecute(message)
-                | Self::PostFailure(message)
                 | Self::ExecuteFailed(message),
                 WorkerEvent::ShouldShutdown,
             ) => Self::PreShutdown(Some(message)),
@@ -217,14 +213,6 @@ impl<B: Broker> WorkerStateMachine<B> {
         }
     }
 
-    async fn post_failure(&mut self, _message: &mut SerializableMessage) -> WorkerEvent {
-        debug!(id=?self.id, "Running failed hooks");
-        for middleware in self.shared_data.middleware.iter() {
-            middleware.after_perform().await;
-        }
-        WorkerEvent::PostFailureCompleted
-    }
-
     async fn retry_task(&mut self, queue: &str, message: &mut SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Marking job {} for retry", message.job_id);
         if let Err(broker_error) = self
@@ -288,7 +276,6 @@ impl<B: Broker> WorkerStateMachine<B> {
             WorkerState::DeadletterTask(queue, message) => {
                 self.deadletter_task(queue, message).await
             }
-            WorkerState::PostFailure(message) => self.post_failure(message).await,
             WorkerState::PreShutdown(message) => {
                 info!(id=?self.id, "Shutting down worker");
                 if let Some(message) = message {
@@ -460,12 +447,12 @@ mod test {
             },
             StateTest {
                 from: WorkerState::RetryTask("default", failed_message()),
-                to: WorkerState::PostFailure(failed_message()),
+                to: WorkerState::PostExecute(failed_message()),
                 event: WorkerEvent::RetryCompleted,
             },
             StateTest {
                 from: WorkerState::DeadletterTask("default", failed_message()),
-                to: WorkerState::PostFailure(failed_message()),
+                to: WorkerState::PostExecute(failed_message()),
                 event: WorkerEvent::DeadletterCompleted,
             },
             StateTest {
@@ -477,11 +464,6 @@ mod test {
                 from: WorkerState::ExecuteFailed(failed_message()),
                 to: WorkerState::DeadletterTask("default", failed_message()),
                 event: WorkerEvent::ShouldDeadletter("default"),
-            },
-            StateTest {
-                from: WorkerState::PostFailure(failed_message()),
-                to: WorkerState::WaitForTask,
-                event: WorkerEvent::PostFailureCompleted,
             },
             StateTest {
                 from: WorkerState::WaitForTask,

@@ -4,8 +4,9 @@
 //! jobs that have failed.
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
-use crate::{Broker, IronworkerApplication};
+use crate::{Broker, IronworkerApplication, message::SerializableError};
 
 /// A struct describing a Worker, including the queue it's listening on, the name of the worker (auto-generated),
 /// and the last time there was a heartbeat.
@@ -25,26 +26,29 @@ pub struct QueueInfo {
     /// The name of the queue
     pub name: String,
     /// The rough size of the queue
-    pub size: usize,
+    pub size: u64,
 }
 
 /// Metadata struct describing
 #[derive(Clone, Copy, Debug)]
 pub struct Stats {
-    pub processed: usize,
-    pub failed: usize,
-    pub scheduled: usize,
-    pub enqueued: usize,
+    pub processed: u64,
+    pub failed: u64,
+    pub scheduled: u64,
+    pub enqueued: u64,
 }
 
-#[allow(missing_copy_implementations, missing_debug_implementations)]
-pub struct DeadletteredInfo {}
+#[derive(Debug)]
+pub struct DeadletteredInfo {
+    pub job_id: Uuid,
+    pub err: Option<SerializableError>
+}
 
 #[allow(missing_copy_implementations, missing_debug_implementations)]
 pub struct ScheduledInfo {}
 
 #[async_trait]
-pub trait ApplicationInfo {
+pub trait ApplicationInfo: Send + Sync {
     async fn workers(&self) -> Vec<WorkerInfo>;
     async fn queues(&self) -> Vec<QueueInfo>;
     async fn stats(&self) -> Stats;

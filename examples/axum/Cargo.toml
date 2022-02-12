@@ -11,6 +11,7 @@ async-trait = "0.1"
 axum = "0.4"
 ironworker-core = { path = "../../ironworker-core" }
 ironworker-redis = { path = "../../ironworker-redis" }
+ironworker-axum = { path = "../../ironworker-axum" }
 serde = "1"
 snafu = "0.7"
 tokio = { version = "1", features = ["full"] }
