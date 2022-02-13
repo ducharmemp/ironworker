@@ -8,7 +8,7 @@ pub struct Config {
     pub(crate) at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct UnwrappedConfig {
     pub(crate) queue: &'static str,
     pub(crate) retries: usize,

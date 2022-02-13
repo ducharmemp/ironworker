@@ -15,6 +15,7 @@
 //!
 //! Taken from https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs with ironworker mixed in
 
+use async_trait::async_trait;
 use axum::{
     error_handling::HandleErrorLayer,
     extract::{Extension, Path, Query},
@@ -25,7 +26,8 @@ use axum::{
 };
 use ironworker_core::{
     middleware::extract::{AddMessageStateMiddleware, Extract},
-    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, Message, Task,
+    IntoTask, IronworkerApplication, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
+    Task,
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
@@ -33,12 +35,26 @@ use std::{
     collections::HashMap,
     convert::Infallible,
     net::SocketAddr,
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
     time::Duration,
 };
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
 use uuid::Uuid;
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+struct CounterMiddleware;
+
+#[async_trait]
+impl IronworkerMiddleware for CounterMiddleware {
+    async fn after_perform(&self) {
+        COUNTER.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -63,6 +79,7 @@ async fn main() {
         .merge(ironworker_axum::endpoints(ironworker.clone()))
         .route("/todos", get(todos_index).post(todos_create))
         .route("/todos/:id", patch(todos_update).delete(todos_delete))
+        .route("/count", get(log_count))
         // Add middleware to all routes
         .layer(
             ServiceBuilder::new()
@@ -190,6 +207,10 @@ async fn log_todos(Message(id): Message<Uuid>, Extract(db): Extract<Db>) -> Resu
     let todo = todos.values().cloned().find(|val| val.id == id);
     dbg!(todo);
     Ok(())
+}
+
+async fn log_count() -> String {
+    format!("{}", COUNTER.load(Ordering::SeqCst))
 }
 
 type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;

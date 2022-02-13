@@ -4,7 +4,7 @@ use std::sync::Arc;
 use askama_axum::Template;
 use axum::{extract::Extension, routing::get, AddExtensionLayer, Router};
 use ironworker_core::{
-    info::{ApplicationInfo, BrokerInfo, QueueInfo, WorkerInfo, DeadletteredInfo},
+    info::{ApplicationInfo, BrokerInfo, DeadletteredInfo, QueueInfo, WorkerInfo},
     Broker, IronworkerApplication,
 };
 
@@ -29,34 +29,28 @@ async fn overview_get(
 struct StatsTemplate {
     processed: u64,
     failed: u64,
-    enqueued: u64
+    enqueued: u64,
 }
 
-async fn stats_get(
-    Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>,
-) -> StatsTemplate {
+async fn stats_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) -> StatsTemplate {
     let stats = ironworker.stats().await;
     StatsTemplate {
         processed: stats.processed,
         failed: stats.failed,
-        enqueued: stats.enqueued
+        enqueued: stats.enqueued,
     }
 }
 
 #[derive(Template)]
 #[template(path = "failed.html")]
 struct FailedTemplate {
-    deadlettered: Vec<DeadletteredInfo>
+    deadlettered: Vec<DeadletteredInfo>,
 }
 
-async fn failed_get(
-    Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>,
-) -> FailedTemplate {
+async fn failed_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) -> FailedTemplate {
     let deadlettered = ironworker.deadlettered().await;
 
-    FailedTemplate {
-        deadlettered
-    }
+    FailedTemplate { deadlettered }
 }
 
 pub fn endpoints<B: Broker + BrokerInfo>(ironworker: Arc<IronworkerApplication<B>>) -> Router {

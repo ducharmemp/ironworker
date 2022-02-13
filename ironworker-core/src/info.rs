@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::{Broker, IronworkerApplication, message::SerializableError};
+use crate::{message::SerializableError, Broker, IronworkerApplication};
 
 /// A struct describing a Worker, including the queue it's listening on, the name of the worker (auto-generated),
 /// and the last time there was a heartbeat.
@@ -41,7 +41,7 @@ pub struct Stats {
 #[derive(Debug)]
 pub struct DeadletteredInfo {
     pub job_id: Uuid,
-    pub err: Option<SerializableError>
+    pub err: Option<SerializableError>,
 }
 
 #[allow(missing_copy_implementations, missing_debug_implementations)]

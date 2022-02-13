@@ -30,7 +30,6 @@ pub(crate) enum WorkerState {
 pub(crate) enum WorkerEvent {
     Initialized,
     TaskReceived(Box<SerializableMessage>),
-    NoTaskReceived,
     ShouldTryHeartbeat,
     HeartBeatCompleted,
     PreExecuteCompleted,
@@ -39,6 +38,7 @@ pub(crate) enum WorkerEvent {
     ExecuteFailed,
     ShouldRetry(&'static str),
     ShouldDeadletter(&'static str),
+    DiscardMessage,
     PostExecuteCompleted,
     RetryCompleted,
     DeadletterCompleted,
@@ -51,11 +51,10 @@ impl WorkerState {
         match (self, event) {
             // Go back to waiting
             (Self::Initialize, WorkerEvent::Initialized) => Self::WaitForTask,
-            (Self::WaitForTask, WorkerEvent::NoTaskReceived) => Self::WaitForTask,
-            (Self::HeartBeat, WorkerEvent::HeartBeatCompleted) => Self::WaitForTask,
 
             // Let the broker know we're alive
             (Self::WaitForTask, WorkerEvent::ShouldTryHeartbeat) => Self::HeartBeat,
+            (Self::HeartBeat, WorkerEvent::HeartBeatCompleted) => Self::WaitForTask,
 
             // Pre task execution
             (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(*message),
@@ -65,9 +64,6 @@ impl WorkerState {
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
             (Self::Execute(message), WorkerEvent::ExecuteFailed) => Self::ExecuteFailed(message),
 
-            // Post execution
-            (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted) => Self::WaitForTask,
-
             // Task Failure
             (Self::ExecuteFailed(message), WorkerEvent::ShouldRetry(queue)) => {
                 Self::RetryTask(queue, message)
@@ -75,10 +71,14 @@ impl WorkerState {
             (Self::ExecuteFailed(message), WorkerEvent::ShouldDeadletter(queue)) => {
                 Self::DeadletterTask(queue, message)
             }
-            (Self::RetryTask(_, message), WorkerEvent::RetryCompleted)
+            (Self::ExecuteFailed(message), WorkerEvent::DiscardMessage)
+            | (Self::RetryTask(_, message), WorkerEvent::RetryCompleted)
             | (Self::DeadletterTask(_, message), WorkerEvent::DeadletterCompleted) => {
                 Self::PostExecute(message)
             }
+
+            // Post execution
+            (Self::PostExecute(_), WorkerEvent::PostExecuteCompleted) => Self::WaitForTask,
 
             // Worker told to stop
             (
@@ -103,7 +103,6 @@ pub(crate) struct WorkerStateMachine<B: Broker> {
     id: String,
     queue: &'static str,
     shared_data: Arc<SharedData<B>>,
-    heartbeat_interval: Interval,
 }
 
 impl<B: Broker> WorkerStateMachine<B> {
@@ -112,26 +111,18 @@ impl<B: Broker> WorkerStateMachine<B> {
             id,
             queue,
             shared_data,
-            heartbeat_interval: interval(Duration::from_millis(5000)),
         }
     }
 
     async fn wait_for_task(&mut self) -> WorkerEvent {
-        select!(
-            biased;
-            _ = self.heartbeat_interval.tick() => {
-                WorkerEvent::ShouldTryHeartbeat
-            },
-            message = self.shared_data.broker.dequeue(self.queue) => {
-                if let Some(message) = message {
-                    debug!(id=?self.id, "Received job {}", message.job_id);
-                    WorkerEvent::TaskReceived(Box::new(message))
-                } else {
-                    debug!(id=?self.id, "No job received, polling again");
-                    WorkerEvent::NoTaskReceived
-                }
-            },
-        )
+        let message = self.shared_data.broker.dequeue(self.queue).await;
+        if let Some(message) = message {
+            debug!(id=?self.id, "Received job {}", message.job_id);
+            WorkerEvent::TaskReceived(Box::new(message))
+        } else {
+            debug!(id=?self.id, "No job received, sending heartbeat");
+            WorkerEvent::ShouldTryHeartbeat
+        }
     }
 
     async fn pre_execute(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
@@ -209,7 +200,7 @@ impl<B: Broker> WorkerStateMachine<B> {
         } else if !should_discard {
             WorkerEvent::ShouldDeadletter(queue)
         } else {
-            WorkerEvent::PostExecuteCompleted
+            WorkerEvent::DiscardMessage
         }
     }
 
@@ -405,11 +396,6 @@ mod test {
                 from: WorkerState::WaitForTask,
                 to: WorkerState::PreExecute(enqueued_successful_message()),
                 event: WorkerEvent::TaskReceived(Box::new(enqueued_successful_message())),
-            },
-            StateTest {
-                from: WorkerState::WaitForTask,
-                to: WorkerState::WaitForTask,
-                event: WorkerEvent::NoTaskReceived,
             },
             StateTest {
                 from: WorkerState::WaitForTask,

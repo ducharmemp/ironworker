@@ -10,7 +10,7 @@ use ironworker_core::info::{
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
 use redis::aio::ConnectionManager;
-use redis::{pipe, AsyncCommands, Client, RedisError, RedisResult};
+use redis::{AsyncCommands, Client, RedisError, RedisResult};
 
 use crate::message::RedisMessage;
 
@@ -84,10 +84,7 @@ impl Broker for RedisBroker {
         let mut conn = self.connection.clone();
         let from = Self::format_queue_key(from);
 
-        let item = conn
-            .rpop::<_, RedisMessage>(&from, None)
-            .await
-            .ok();
+        let item = conn.rpop::<_, RedisMessage>(&from, None).await.ok();
 
         if let Some(item) = item {
             return Some(item.into());
@@ -101,7 +98,8 @@ impl Broker for RedisBroker {
         let mut conn = self.connection.clone();
         let worker_key = Self::format_worker_info_key(worker_id);
 
-        conn.hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis()).await?;
+        conn.hset(&worker_key, "last_seen_at", Utc::now().timestamp_millis())
+            .await?;
         conn.expire(&worker_key, 60).await?;
         Ok(())
     }
@@ -206,20 +204,27 @@ impl BrokerInfo for RedisBroker {
             .keys::<_, Vec<String>>(Self::format_deadletter_key("*"))
             .await
             .unwrap_or_default();
-            
-        let futs: Vec<_> = failed_queues.into_iter().map(|queue| async {
-            let mut conn = self.connection.clone();
-            let messages = conn
-                .lrange::<_, Vec<RedisMessage>>(queue, 0, -1)
-                .await
-                .unwrap_or_default();
-            let messages: Vec<SerializableMessage> = messages.into_iter().map(Into::into).collect();
-            let messages: Vec<DeadletteredInfo> = messages.into_iter().map(|message| DeadletteredInfo {
-                err: message.err,
-                job_id: message.job_id,
-            }).collect();
-            messages
-        }).collect();
+
+        let futs: Vec<_> = failed_queues
+            .into_iter()
+            .map(|queue| async {
+                let mut conn = self.connection.clone();
+                let messages = conn
+                    .lrange::<_, Vec<RedisMessage>>(queue, 0, -1)
+                    .await
+                    .unwrap_or_default();
+                let messages: Vec<SerializableMessage> =
+                    messages.into_iter().map(Into::into).collect();
+                let messages: Vec<DeadletteredInfo> = messages
+                    .into_iter()
+                    .map(|message| DeadletteredInfo {
+                        err: message.err,
+                        job_id: message.job_id,
+                    })
+                    .collect();
+                messages
+            })
+            .collect();
 
         future::join_all(futs).await.into_iter().flatten().collect()
     }
