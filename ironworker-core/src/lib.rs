@@ -67,12 +67,12 @@ pub use task::{IntoTask, Task};
 pub(crate) mod test {
     use chrono::{SubsecRound, Utc};
     use serde::Serialize;
-    use snafu::prelude::*;
+    use snafu::{prelude::*, IntoError};
     use uuid::Uuid;
 
     use crate::{
-        message::SerializableError, task::PerformableTask, IntoTask, Message, SerializableMessage,
-        Task,
+        error::PerformLaterSnafu, message::SerializableError, task::PerformableTask, IntoTask,
+        Message, SerializableMessage, Task,
     };
 
     pub(crate) fn assert_send<T: Send>() {}
@@ -124,9 +124,9 @@ pub(crate) mod test {
 
     pub(crate) fn failed_message() -> SerializableMessage {
         let mut message = message(boxed_task(failed.task()));
-        message
-            .err
-            .replace(SerializableError::new(Box::new(TestEnum::Failed) as Box<_>));
+        message.err.replace(SerializableError::new(
+            PerformLaterSnafu.into_error(Box::new(TestEnum::Failed)),
+        ));
         message
     }
 }

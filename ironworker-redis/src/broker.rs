@@ -44,12 +44,16 @@ impl RedisBroker {
         format!("queue:{}", queue_name)
     }
 
-    fn format_processed_stats_key() -> String {
-        "ironworker:processed".to_string()
+    fn format_stats_key() -> String {
+        "ironworker:stats".to_string()
     }
 
-    fn format_failed_stats_key() -> String {
+    fn format_failed_queues_key() -> String {
         "ironworker:failed".to_string()
+    }
+
+    fn format_queues_key() -> String {
+        "ironworker:queues".to_string()
     }
 }
 
@@ -62,7 +66,8 @@ impl Broker for RedisBroker {
 
         let queue_key = Self::format_queue_key(queue);
         let message = RedisMessage::from(message);
-        conn.lpush::<_, _, ()>(&queue_key, message).await?;
+        conn.lpush(&queue_key, message).await?;
+        conn.sadd(Self::format_queues_key(), queue_key).await?;
 
         Ok(())
     }
@@ -76,7 +81,9 @@ impl Broker for RedisBroker {
         let deadletter_key = Self::format_deadletter_key(queue);
         let message = RedisMessage::from(message);
 
-        conn.lpush::<_, _, ()>(&deadletter_key, message).await?;
+        conn.lpush(&deadletter_key, message).await?;
+        conn.sadd(Self::format_failed_queues_key(), deadletter_key)
+            .await?;
         Ok(())
     }
 
@@ -113,11 +120,11 @@ impl Broker for RedisBroker {
         let is_retried = message.err.is_some();
 
         connection
-            .incr::<_, _, ()>(Self::format_processed_stats_key(), 1)
+            .hincr(Self::format_stats_key(), "processed", 1)
             .await?;
         if is_retried {
             connection
-                .incr::<_, _, ()>(Self::format_failed_stats_key(), 1)
+                .hincr(Self::format_stats_key(), "failed", 1)
                 .await?;
         }
         Ok(())
@@ -158,20 +165,20 @@ impl BrokerInfo for RedisBroker {
     }
 
     async fn queues(&self) -> Vec<QueueInfo> {
-        let queue_ids = {
-            let mut conn = self.connection.clone();
-            let queue_key = Self::format_queue_key("*");
-            conn.keys::<_, Vec<String>>(&queue_key).await.unwrap()
-        };
+        let mut conn = self.connection.clone();
+        let queues = conn
+            .keys::<_, Vec<String>>(Self::format_queues_key())
+            .await
+            .unwrap();
 
-        let futs: Vec<_> = queue_ids
-            .iter()
+        let futs: Vec<_> = queues
+            .into_iter()
             .map(|worker_id| async move {
                 let mut conn = self.connection.clone();
-                let queue_size = conn.llen(worker_id).await.unwrap();
+                let queue_size = conn.llen(&worker_id).await.unwrap();
 
                 QueueInfo {
-                    name: worker_id.clone(),
+                    name: worker_id,
                     size: queue_size,
                 }
             })
@@ -181,18 +188,14 @@ impl BrokerInfo for RedisBroker {
 
     async fn stats(&self) -> Stats {
         let mut connection = self.connection.clone();
-        let processed = connection
-            .get::<_, u64>(Self::format_processed_stats_key())
-            .await
-            .unwrap_or_default();
-        let failed = connection
-            .get::<_, u64>(Self::format_failed_stats_key())
+        let stats = connection
+            .get::<_, HashMap<String, u64>>(Self::format_stats_key())
             .await
             .unwrap_or_default();
 
         Stats {
-            processed,
-            failed,
+            processed: stats.get("processed").cloned().unwrap_or_default(),
+            failed: stats.get("failed").cloned().unwrap_or_default(),
             scheduled: 0,
             enqueued: 0,
         }
@@ -201,7 +204,7 @@ impl BrokerInfo for RedisBroker {
     async fn deadlettered(&self) -> Vec<DeadletteredInfo> {
         let mut connection = self.connection.clone();
         let failed_queues = connection
-            .keys::<_, Vec<String>>(Self::format_deadletter_key("*"))
+            .smembers::<_, Vec<String>>(Self::format_failed_queues_key())
             .await
             .unwrap_or_default();
 

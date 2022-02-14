@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use snafu::futures::TryFutureExt as SnafuTryFutureExt;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
-use tokio::time::{interval, timeout, Interval};
+use tokio::time::timeout;
 use tracing::{debug, error, info};
 
+use crate::error::{PerformLaterSnafu, TimeoutSnafu};
 use crate::message::SerializableError;
 use crate::{Broker, SerializableMessage};
 
@@ -59,6 +61,9 @@ impl WorkerState {
             // Pre task execution
             (Self::WaitForTask, WorkerEvent::TaskReceived(message)) => Self::PreExecute(*message),
             (Self::PreExecute(message), WorkerEvent::PreExecuteCompleted) => Self::Execute(message),
+            (Self::PreExecute(message), WorkerEvent::PreExecuteFailed) => {
+                Self::ExecuteFailed(message)
+            }
 
             // Task execution
             (Self::Execute(message), WorkerEvent::ExecuteCompleted) => Self::PostExecute(message),
@@ -146,10 +151,13 @@ impl<B: Broker> WorkerStateMachine<B> {
         let max_run_time = config.timeout;
         let task_future = timeout(
             Duration::from_secs(max_run_time),
-            handler.perform(message.clone()),
+            handler
+                .perform(message.clone())
+                .context(PerformLaterSnafu {}),
         );
 
-        match task_future.await {
+        let result = task_future.context(TimeoutSnafu {}).await;
+        match result {
             Ok(task_result) => {
                 if let Err(err) = task_result {
                     message.err.replace(SerializableError::new(err));
@@ -159,9 +167,7 @@ impl<B: Broker> WorkerStateMachine<B> {
                 }
             }
             Err(e) => {
-                message
-                    .err
-                    .replace(SerializableError::new(Box::new(e) as Box<_>));
+                message.err.replace(SerializableError::new(e));
                 WorkerEvent::ExecuteFailed
             }
         }
@@ -309,8 +315,8 @@ mod test {
     use tokio::time;
 
     use crate::test::{
-        boxed_task, enqueued_successful_message, failed, failed_message, successful,
-        successful_message,
+        assert_send, assert_sync, boxed_task, enqueued_successful_message, failed, failed_message,
+        successful, successful_message,
     };
     use crate::IronworkerMiddleware;
     use crate::{broker::InProcessBroker, IntoTask, Task};
@@ -357,6 +363,12 @@ mod test {
     enum TestEnum {
         #[snafu(display("The task failed"))]
         Failed,
+    }
+
+    #[tokio::test]
+    async fn worker_machine_send_and_sync() {
+        assert_send::<WorkerStateMachine<InProcessBroker>>();
+        assert_sync::<WorkerStateMachine<InProcessBroker>>();
     }
 
     #[tokio::test]

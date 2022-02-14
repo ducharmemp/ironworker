@@ -54,7 +54,7 @@ async fn failed_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) 
 }
 
 pub fn endpoints<B: Broker + BrokerInfo>(ironworker: Arc<IronworkerApplication<B>>) -> Router {
-    let ironworker_info: Arc<dyn ApplicationInfo> = ironworker.clone();
+    let ironworker_info: Arc<dyn ApplicationInfo> = ironworker;
     Router::new()
         .route("/ironworker/", get(overview_get))
         .route("/ironworker/failed", get(failed_get))

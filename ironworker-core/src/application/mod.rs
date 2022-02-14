@@ -10,15 +10,18 @@ use futures::StreamExt;
 use serde::Serialize;
 
 use serde_json::to_value;
+use snafu::ResultExt;
 use tokio::select;
 use tokio::sync::broadcast::channel;
 use tokio::sync::Notify;
 use tracing::debug;
 
 use crate::config::IronworkerConfig;
+use crate::error::{CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu};
 use crate::message::SerializableMessageBuilder;
 use crate::task::Config as TaskConfig;
 use crate::{Broker, IronworkerError, Message};
+
 pub use builder::IronworkerApplicationBuilder;
 use shared::SharedData;
 use worker::IronWorkerPool;
@@ -53,15 +56,16 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
         };
         let merged_config = task_config.merge(handler_config);
         let unwrapped_config = merged_config.unwrap();
+        let value = to_value(payload).context(CouldNotSerializePayloadSnafu {})?;
 
         let serializable = SerializableMessageBuilder::default()
             .task(task.to_string())
             .queue(unwrapped_config.queue.to_string())
-            .payload(to_value(payload).unwrap())
+            .payload(value)
             .at(unwrapped_config.at)
             .retries(0)
             .build()
-            .unwrap();
+            .context(CouldNotConstructSerializableMessageSnafu {})?;
 
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
 

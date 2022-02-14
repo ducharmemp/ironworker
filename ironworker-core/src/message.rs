@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_value, Error, Value};
 use uuid::Uuid;
 
-use crate::{task::TaskError, FromPayload};
+use crate::{FromPayload, IronworkerError};
 
 /// A job payload. This struct describes the argument to a given task (passed in by `perform_now`/`perform_later`).
 /// This is a mandatory field for all tasks, even if the internal value is an empty tuple.
@@ -38,7 +38,7 @@ pub struct SerializableError {
 }
 
 impl SerializableError {
-    pub(crate) fn new(err: Box<dyn TaskError>) -> Self {
+    pub(crate) fn new(err: IronworkerError) -> Self {
         Self {
             message: format!("{:#?}", err),
         }

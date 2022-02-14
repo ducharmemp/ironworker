@@ -9,7 +9,9 @@ use snafu::{AsErrorSource, ResultExt};
 
 use crate::application::IronworkerApplication;
 use crate::broker::Broker;
-use crate::error::PerformNowSnafu;
+use crate::error::{
+    CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu, PerformNowSnafu,
+};
 use crate::message::{Message, SerializableMessageBuilder};
 use crate::{IronworkerError, SerializableMessage};
 
@@ -23,7 +25,7 @@ macro_rules! auxiliary_trait{
     }
 }
 
-auxiliary_trait!(TaskError, AsErrorSource + Debug + 'static);
+auxiliary_trait!(TaskError, AsErrorSource + Debug + Send + 'static);
 auxiliary_trait!(
     TaskPayload,
     for<'de> Deserialize<'de> + Serialize + 'static + Send
@@ -54,14 +56,16 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
         payload: T,
     ) -> Result<(), IronworkerError> {
         let unwrapped_config = self.config().unwrap();
+        let value = to_value(payload).context(CouldNotSerializePayloadSnafu {})?;
+
         let message = SerializableMessageBuilder::default()
             .task(self.name().to_string())
             .queue("inline".to_string())
-            .payload(to_value(payload).unwrap())
+            .payload(value)
             .at(unwrapped_config.at)
             .retries(0)
             .build()
-            .unwrap();
+            .context(CouldNotConstructSerializableMessageSnafu {})?;
         self.perform(message).await.context(PerformNowSnafu {})
     }
 
