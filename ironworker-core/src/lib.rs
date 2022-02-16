@@ -6,7 +6,7 @@
 //!
 //! # Overview
 //!
-//! At its heart, an Ironworker application acts on messages pass from Producers, through a backing datastore, and onto Consumers. This approach
+//! At its heart, an Ironworker application acts on messages provided by Producers, through a backing datastore, and onto Consumers. This approach
 //! to structuring applications has a long history, but at a high level this structure means that work can be offloaded from user-facing servers
 //! onto dedicated machines, providing scalability, reducing coupling, and greater durability of business level operations.
 // #![forbid(unsafe_code)]
@@ -56,7 +56,7 @@ pub mod middleware;
 mod task;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
-pub use broker::{Broker, BrokerConfig, HeartbeatStrategy, InProcessBroker, RetryStrategy};
+pub use broker::{Broker, InProcessBroker};
 pub use error::{IronworkerError, IronworkerResult};
 pub use from_payload::FromPayload;
 pub use message::{Message, SerializableMessage};

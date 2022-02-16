@@ -176,7 +176,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn post_execute(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running post-execution hooks");
         for middleware in self.shared_data.middleware.iter() {
-            middleware.after_perform().await;
+            middleware.after_perform(&message).await;
         }
         if let Err(broker_error) = self
             .shared_data
@@ -510,7 +510,7 @@ mod test {
 
         #[async_trait]
         impl IronworkerMiddleware for TestMiddleware {
-            async fn after_perform(&self) {
+            async fn after_perform(&self, _: &SerializableMessage) {
                 let mut ctr = self.0.lock().unwrap();
                 *ctr += 1;
             }

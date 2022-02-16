@@ -25,7 +25,7 @@ impl RedisBroker {
         Ok(Self { connection })
     }
 
-    pub async fn from_cliet(client: &Client) -> RedisResult<Self> {
+    pub async fn from_client(client: &Client) -> RedisResult<Self> {
         let connection = client.get_tokio_connection_manager().await?;
         Ok(Self { connection })
     }

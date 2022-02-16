@@ -68,12 +68,21 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
             .context(CouldNotConstructSerializableMessageSnafu {})?;
 
         debug!(id=?self.id, "Enqueueing job {}", serializable.job_id);
+        for middleware in self.shared_data.middleware.iter() {
+            middleware.before_enqueue(&serializable).await;
+        }
 
         self.shared_data
             .broker
             .enqueue(unwrapped_config.queue, serializable)
             .await
             .map_err(|_| IronworkerError::CouldNotEnqueue)?;
+
+        // FIXME: This needs the serializable message even though we rightfully hand off ownership
+        // for middleware in self.shared_data.middleware.iter() {
+        //     middleware.after_enqueue(&serializable).await;
+        // }
+
         Ok(())
     }
 

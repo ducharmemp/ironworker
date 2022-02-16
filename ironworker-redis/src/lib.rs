@@ -1,3 +1,5 @@
+//! A [Sidekiq](https://github.com/mperham/sidekiq) inspired broker for Ironworker Applications
+//!
 #![deny(
     clippy::all,
     clippy::cargo,
@@ -24,7 +26,7 @@
     deprecated_in_future,
     missing_copy_implementations,
     // missing_debug_implementations,
-    // missing_docs,
+    missing_docs,
     unused_import_braces,
     unused_labels,
     unused_lifetimes,

@@ -1,9 +1,7 @@
-mod config;
 mod process;
 
 use async_trait::async_trait;
 
-pub use self::config::{BrokerConfig, HeartbeatStrategy, RetryStrategy};
 use crate::message::SerializableMessage;
 pub use process::InProcessBroker;
 

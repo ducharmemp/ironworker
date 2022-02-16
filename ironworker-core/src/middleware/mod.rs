@@ -1,13 +1,22 @@
+//!
 pub mod extract;
 
 use async_trait::async_trait;
 
 use crate::SerializableMessage;
 
+/// A trait for implementing middleware for Ironworker applications. These methods currently must not fail
 #[async_trait]
 pub trait IronworkerMiddleware: Send + Sync + 'static {
-    async fn before_enqueue(&self) {}
-    async fn after_enqueue(&self) {}
+    /// Called before the job is enqueued
+    async fn before_enqueue(&self, _message: &SerializableMessage) {}
+
+    /// Called after the job is enqueued.
+    async fn after_enqueue(&self, _message: &SerializableMessage) {}
+
+    /// Called before the job is executed.
     async fn before_perform(&self, _message: &mut SerializableMessage) {}
-    async fn after_perform(&self) {}
+
+    /// Called after the job is executed.
+    async fn after_perform(&self, _message: &SerializableMessage) {}
 }

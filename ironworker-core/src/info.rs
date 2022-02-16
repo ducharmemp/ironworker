@@ -2,6 +2,10 @@
 //!
 //! These structs provide insight into worker/queue/application internals, such as number of items processed, sizes of queues, and
 //! jobs that have failed.
+//!
+//! These are intended to be used by brokers and web interfaces to show the current state of the queue, if possible. Some data stores like
+//! RabbitMq have built-in viewers, and others provide no introspection at all like SQS. These are meant to bridge the gap in Ops when utilizing
+//! data stores like Redis or Postgres.
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

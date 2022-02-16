@@ -13,7 +13,7 @@
 //! cargo run -p example-todos
 //! ```
 //!
-//! Taken from https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs with ironworker mixed in
+//! Taken from <https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs> with ironworker mixed in
 
 use async_trait::async_trait;
 use axum::{
@@ -27,7 +27,7 @@ use axum::{
 use ironworker_core::{
     middleware::extract::{AddMessageStateMiddleware, Extract},
     IntoTask, IronworkerApplication, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
-    Task,
+    SerializableMessage, Task,
 };
 use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,7 @@ struct CounterMiddleware;
 
 #[async_trait]
 impl IronworkerMiddleware for CounterMiddleware {
-    async fn after_perform(&self) {
+    async fn after_perform(&self, _: &SerializableMessage) {
         COUNTER.fetch_add(1, Ordering::SeqCst);
     }
 }
