@@ -121,6 +121,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn wait_for_task(&mut self) -> WorkerEvent {
+        #[allow(clippy::expect_used)]
         let message = self
             .shared_data
             .broker
@@ -319,12 +320,11 @@ impl<B: Broker> WorkerStateMachine<B> {
 mod test {
     use std::collections::HashMap;
     use std::iter::FromIterator;
-    use std::sync::Mutex;
 
-    use async_trait::async_trait;
     use snafu::Snafu;
     use tokio::time;
 
+    use crate::middleware::MockIronworkerMiddleware;
     use crate::test::{
         assert_send, assert_sync, boxed_task, enqueued_successful_message, failed, failed_message,
         successful, successful_message,
@@ -494,46 +494,26 @@ mod test {
 
     #[tokio::test]
     async fn pre_execute_calls_middleware() {
-        let ctr = Arc::new(Mutex::new(0));
-
-        struct TestMiddleware(Arc<Mutex<usize>>);
-
-        #[async_trait]
-        impl IronworkerMiddleware for TestMiddleware {
-            async fn before_perform(&self, _message: &mut SerializableMessage) {
-                let mut ctr = self.0.lock().unwrap();
-                *ctr += 1;
-            }
-        }
+        let mut middleware = MockIronworkerMiddleware::new();
+        middleware.expect_before_perform().times(1).return_const(());
 
         let mut message = enqueued_successful_message();
-        let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
+        let shared = shared_context_with_middleware(vec![Box::new(middleware)]);
         let mut worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
         assert_eq!(
             worker.pre_execute(&mut message).await,
             WorkerEvent::PreExecuteCompleted
         );
-        assert_eq!(*ctr.lock().unwrap(), 1);
     }
 
     #[tokio::test]
     async fn post_execute_calls_middleware() {
-        let ctr = Arc::new(Mutex::new(0));
-
-        struct TestMiddleware(Arc<Mutex<usize>>);
-
-        #[async_trait]
-        impl IronworkerMiddleware for TestMiddleware {
-            async fn after_perform(&self, _: &SerializableMessage) {
-                let mut ctr = self.0.lock().unwrap();
-                *ctr += 1;
-            }
-        }
+        let mut middleware = MockIronworkerMiddleware::new();
+        middleware.expect_after_perform().times(1).return_const(());
 
         let mut message = enqueued_successful_message();
-        let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
+        let shared = shared_context_with_middleware(vec![Box::new(middleware)]);
         let mut worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
         worker.post_execute(&mut message).await;
-        assert_eq!(*ctr.lock().unwrap(), 1);
     }
 }

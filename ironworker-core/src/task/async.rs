@@ -112,36 +112,53 @@ impl_async_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13
 
 #[cfg(test)]
 mod test {
-    use crate::{broker::InProcessBroker, test::TestEnum, IronworkerApplicationBuilder};
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    };
+
+    use anymap::Map;
+    use serde_json::to_value;
+    use uuid::Uuid;
+
+    use crate::{
+        broker::InProcessBroker, message::SerializableMessageBuilder, middleware::extract::Extract,
+        test::TestEnum, IronworkerApplicationBuilder,
+    };
 
     use super::*;
 
-    // #[tokio::test]
-    // async fn perform_runs_the_task() {
-    //     let status_mock_called = Arc::new(Mutex::new(false));
-
-    //     let status_mock = {
-    //         let inner = status_mock_called.clone();
-    //         |_state: Message<u32>| async move {
-    //             let mut write_guard = inner.lock().unwrap();
-    //             *write_guard = true;
-    //             Ok(())
-    //         }
-    //     };
-
-    //     let payload: Message<u32> = 123.into();
-    //     let res = status_mock
-    //         .task()
-    //         .perform(
-    //             SerializableMessage::from_message("status_mock", "default", payload)
-    //         )
-    //         .await;
-    //     assert_eq!(res.unwrap(), ());
-    //     assert_eq!(*status_mock_called.lock().unwrap(), true);
-    // }
-
     #[tokio::test]
-    async fn perform_now_enqueues_the_task() {}
+    async fn perform_runs_the_task() {
+        let counter = Arc::new(AtomicU64::new(0));
+
+        async fn incr_counter(
+            Message(count): Message<u64>,
+            Extract(counter): Extract<Arc<AtomicU64>>,
+        ) -> Result<(), TestEnum> {
+            counter.fetch_add(count, Ordering::SeqCst);
+            Ok(())
+        }
+
+        let mut state = Map::new();
+        state.insert(counter.clone());
+
+        let message = SerializableMessageBuilder::default()
+            .queue("default".to_string())
+            .created_at(Utc::now())
+            .enqueued_at(Some(Utc::now()))
+            .job_id(Uuid::new_v4())
+            .retries(0)
+            .task(incr_counter.task().name().to_string())
+            .payload(to_value(123).unwrap())
+            .message_state(state)
+            .build()
+            .unwrap();
+
+        let res = incr_counter.task().perform(message).await;
+        assert_eq!(res.unwrap(), ());
+        assert_eq!(counter.load(Ordering::SeqCst), 123);
+    }
 
     #[tokio::test]
     async fn perform_later_enqueues_the_task() {

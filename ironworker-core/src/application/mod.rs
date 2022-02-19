@@ -124,18 +124,70 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
 
 #[cfg(test)]
 mod test {
+    use std::{collections::HashMap, iter::FromIterator};
+
     use super::*;
     use crate::{
-        test::{assert_send, assert_sync},
-        InProcessBroker,
+        broker::MockBroker,
+        middleware::MockIronworkerMiddleware,
+        test::{assert_send, assert_sync, boxed_task, successful},
+        IntoTask, Task,
     };
 
     #[tokio::test]
-    async fn enqueuing_message_goes_to_broker() {}
+    async fn enqueuing_message_goes_to_broker() {
+        let mut broker = MockBroker::new();
+        broker.expect_enqueue().times(1).return_const(Ok(()));
+        let task = successful.task();
+
+        let app = IronworkerApplication {
+            id: "test".to_string(),
+            queues: HashSet::from_iter(["default"]),
+            config: IronworkerConfig::default(),
+            notify_shutdown: Notify::new(),
+            shared_data: Arc::new(SharedData {
+                broker,
+                tasks: HashMap::from_iter([(
+                    task.name(),
+                    (boxed_task(task), TaskConfig::default()),
+                )]),
+                middleware: vec![],
+            }),
+        };
+
+        successful.task().perform_later(&app, 123).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn enqueueing_message_calls_before_enqueue() {
+        let mut broker = MockBroker::new();
+        broker.expect_enqueue().times(1).return_const(Ok(()));
+        let task = successful.task();
+
+        let mut middleware = MockIronworkerMiddleware::new();
+        middleware.expect_before_enqueue().times(1).return_const(());
+
+        let app = IronworkerApplication {
+            id: "test".to_string(),
+            queues: HashSet::from_iter(["default"]),
+            config: IronworkerConfig::default(),
+            notify_shutdown: Notify::new(),
+            shared_data: Arc::new(SharedData {
+                broker,
+                tasks: HashMap::from_iter([(
+                    task.name(),
+                    (boxed_task(task), TaskConfig::default()),
+                )]),
+                middleware: vec![Box::new(middleware)],
+            }),
+        };
+
+        successful.task().perform_later(&app, 123).await.unwrap();
+    }
 
     #[test]
     fn assertions() {
-        assert_send::<IronworkerApplication<InProcessBroker>>();
-        assert_sync::<IronworkerApplication<InProcessBroker>>();
+        assert_send::<IronworkerApplication<MockBroker>>();
+        assert_sync::<IronworkerApplication<MockBroker>>();
     }
 }

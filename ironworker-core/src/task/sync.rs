@@ -141,9 +141,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn perform_now_enqueues_the_task() {}
-
-    #[tokio::test]
     async fn perform_later_enqueues_the_task() {
         fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
             Ok(())

@@ -2,6 +2,10 @@ mod process;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+#[cfg(test)]
+use mockall::predicate::*;
+#[cfg(test)]
+use mockall::*;
 
 use crate::message::SerializableMessage;
 pub use process::InProcessBroker;
@@ -10,6 +14,7 @@ pub use process::InProcessBroker;
 /// but these details are left to the implementors of this trait. Because of the differences between different services (ex. redis vs SQS vs RabbitMQ),
 /// not all methods on the broker are required to be implemented and will default to noops if the method is not applicable for a given datastore. An
 /// example of this is the heartbeat function, which only makes sense with datastores where manual health tracking of clients is necessary.
+#[cfg_attr(test, automock(type Error=();))]
 #[async_trait]
 pub trait Broker: Send + Sync + 'static {
     type Error: std::fmt::Debug;
