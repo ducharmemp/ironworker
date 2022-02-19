@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use futures::future;
 use ironworker_core::info::{
     BrokerInfo, DeadletteredInfo, QueueInfo, ScheduledInfo, Stats, WorkerInfo,
@@ -10,21 +10,32 @@ use ironworker_core::info::{
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
 use redis::aio::ConnectionManager;
-use redis::{AsyncCommands, Client, RedisError, RedisResult};
+use redis::{AsyncCommands, Client, RedisError, RedisResult, Script};
 
 use crate::message::RedisMessage;
+static SCRIPT_SRC: &str = r#"
+local key, now = KEYS[1], ARGV[1]
+local jobs = redis.call("zrangebyscore", key, "-inf", now, "limit", 0, 1)
+if jobs[1] then
+    redis.call("zrem", key, jobs[1])
+    return jobs[1]
+end
+"#;
 
+/// An Ironworker broker for communicating with Redis.
 pub struct RedisBroker {
     connection: ConnectionManager,
 }
 
 impl RedisBroker {
+    /// Constructs a RedisBroker instance from a provided URI.
     pub async fn new(uri: &str) -> RedisResult<RedisBroker> {
         let client = Client::open(uri)?;
         let connection = client.get_tokio_connection_manager().await?;
         Ok(Self { connection })
     }
 
+    /// Constructs a RedisBroker instance from an existing client.
     pub async fn from_client(client: &Client) -> RedisResult<Self> {
         let connection = client.get_tokio_connection_manager().await?;
         Ok(Self { connection })
@@ -44,6 +55,10 @@ impl RedisBroker {
         format!("queue:{}", queue_name)
     }
 
+    fn format_scheduled_set_key(queue_name: &str) -> String {
+        format!("scheduled:{}", queue_name)
+    }
+
     fn format_stats_key() -> String {
         "ironworker:stats".to_string()
     }
@@ -61,13 +76,27 @@ impl RedisBroker {
 impl Broker for RedisBroker {
     type Error = RedisError;
 
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
+    async fn enqueue(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+        at: Option<DateTime<Utc>>,
+    ) -> Result<(), Self::Error> {
         let mut conn = self.connection.clone();
 
-        let queue_key = Self::format_queue_key(queue);
-        let message = RedisMessage::from(message);
-        conn.lpush(&queue_key, message).await?;
-        conn.sadd(Self::format_queues_key(), queue_key).await?;
+        if let Some(at) = at {
+            let scheduled_set_key = Self::format_scheduled_set_key(queue);
+            let message = RedisMessage::from(message);
+            conn.zadd::<_, _, _, ()>(scheduled_set_key, message, at.timestamp_millis())
+                .await?;
+            conn.hincr(Self::format_stats_key(), "scheduled", 1).await?;
+        } else {
+            let queue_key = Self::format_queue_key(queue);
+            let message = RedisMessage::from(message);
+            conn.lpush(&queue_key, message).await?;
+            conn.sadd(Self::format_queues_key(), queue_key).await?;
+            conn.hincr(Self::format_stats_key(), "enqueued", 1).await?;
+        }
 
         Ok(())
     }
@@ -80,25 +109,42 @@ impl Broker for RedisBroker {
         let mut conn = self.connection.clone();
         let deadletter_key = Self::format_deadletter_key(queue);
         let message = RedisMessage::from(message);
+        let now = Utc::now();
+        conn.zadd(&deadletter_key, message, now.timestamp_millis())
+            .await?;
 
-        conn.lpush(&deadletter_key, message).await?;
         conn.sadd(Self::format_failed_queues_key(), deadletter_key)
             .await?;
         Ok(())
     }
 
-    async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, queue: &str) -> Result<Option<SerializableMessage>, Self::Error> {
         let mut conn = self.connection.clone();
-        let from = Self::format_queue_key(from);
+        let from = Self::format_queue_key(queue);
 
         let item = conn.rpop::<_, RedisMessage>(&from, None).await.ok();
 
         if let Some(item) = item {
-            return Some(item.into());
+            return Ok(Some(item.into()));
+        }
+
+        // Try and get something that's scheduled now
+        let from = Self::format_scheduled_set_key(queue);
+        let script = Script::new(SCRIPT_SRC);
+
+        let item = script
+            .prepare_invoke()
+            .key(from)
+            .arg(Utc::now().timestamp_millis())
+            .invoke_async::<_, Option<RedisMessage>>(&mut conn)
+            .await?;
+
+        if let Some(item) = item {
+            self.enqueue(queue, item.into(), None).await?;
         }
 
         tokio::time::sleep(Duration::from_millis(5000)).await;
-        None
+        Ok(None)
     }
 
     async fn heartbeat(&self, worker_id: &str) -> Result<(), Self::Error> {
@@ -167,18 +213,18 @@ impl BrokerInfo for RedisBroker {
     async fn queues(&self) -> Vec<QueueInfo> {
         let mut conn = self.connection.clone();
         let queues = conn
-            .keys::<_, Vec<String>>(Self::format_queues_key())
+            .smembers::<_, Vec<String>>(Self::format_queues_key())
             .await
             .unwrap();
 
         let futs: Vec<_> = queues
             .into_iter()
-            .map(|worker_id| async move {
+            .map(|queue_name| async move {
                 let mut conn = self.connection.clone();
-                let queue_size = conn.llen(&worker_id).await.unwrap();
+                let queue_size = conn.llen(&queue_name).await.unwrap();
 
                 QueueInfo {
-                    name: worker_id,
+                    name: queue_name,
                     size: queue_size,
                 }
             })
@@ -196,8 +242,8 @@ impl BrokerInfo for RedisBroker {
         Stats {
             processed: stats.get("processed").cloned().unwrap_or_default(),
             failed: stats.get("failed").cloned().unwrap_or_default(),
-            scheduled: 0,
-            enqueued: 0,
+            scheduled: stats.get("scheduled").cloned().unwrap_or_default(),
+            enqueued: stats.get("enqueued").cloned().unwrap_or_default(),
         }
     }
 
@@ -213,7 +259,7 @@ impl BrokerInfo for RedisBroker {
             .map(|queue| async {
                 let mut conn = self.connection.clone();
                 let messages = conn
-                    .lrange::<_, Vec<RedisMessage>>(queue, 0, -1)
+                    .zrange::<_, Vec<RedisMessage>>(queue, 0, -1)
                     .await
                     .unwrap_or_default();
                 let messages: Vec<SerializableMessage> =

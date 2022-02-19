@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use aws_config::Config;
 use aws_sdk_sqs::{config::Builder, Client};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
@@ -12,7 +12,8 @@ use serde_json::to_string;
 use snafu::prelude::*;
 
 use crate::errors::{
-    DeleteMessageFailedSnafu, GetQueueUrlFailedSnafu, SendMessageFailedSnafu, SqsBrokerError,
+    DeleteMessageFailedSnafu, DeserializeMessageFailedSnafu, GetQueueUrlFailedSnafu,
+    SendMessageFailedSnafu, SqsBrokerError,
 };
 use crate::queue::Queue;
 
@@ -65,11 +66,16 @@ impl Broker for SqsBroker {
         Ok(())
     }
 
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
+    async fn enqueue(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+        at: Option<DateTime<Utc>>,
+    ) -> Result<(), Self::Error> {
         let queue = self.queues.get(&queue.to_string()).unwrap();
         let mut message_builder = self.client.send_message().queue_url(&queue.url);
 
-        if let Some(at) = message.at {
+        if let Some(at) = at {
             let delay_seconds = (Utc::now() - at).num_seconds();
             debug_assert!(delay_seconds < 15 * 60);
             debug_assert!(delay_seconds > 0);
@@ -87,7 +93,7 @@ impl Broker for SqsBroker {
         Ok(())
     }
 
-    async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, from: &str) -> Result<Option<SerializableMessage>, Self::Error> {
         let queue = self.queues.get(&from.to_string()).unwrap();
         let received = self
             .client
@@ -98,10 +104,19 @@ impl Broker for SqsBroker {
             .await
             .unwrap();
         let mut messages = received.messages.unwrap_or_default();
-        let message = messages.pop()?;
-        let mut payload = from_str::<SerializableMessage>(&message.body?).unwrap();
-        payload.delivery_tag = message.receipt_handle;
-        Some(payload)
+        let message = messages.pop();
+        if let Some(message) = message {
+            if let Some(body) = message.body {
+                let mut payload = from_str::<SerializableMessage>(&body)
+                    .context(DeserializeMessageFailedSnafu {})?;
+                payload.delivery_tag = message.receipt_handle;
+                Ok(Some(payload))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     async fn acknowledge_processed(

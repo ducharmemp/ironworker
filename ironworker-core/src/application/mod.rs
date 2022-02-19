@@ -74,7 +74,7 @@ impl<B: Broker + Send + 'static> IronworkerApplication<B> {
 
         self.shared_data
             .broker
-            .enqueue(unwrapped_config.queue, serializable)
+            .enqueue(unwrapped_config.queue, serializable, unwrapped_config.at)
             .await
             .map_err(|_| IronworkerError::CouldNotEnqueue)?;
 

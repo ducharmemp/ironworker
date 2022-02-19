@@ -98,13 +98,13 @@ pub(crate) mod test {
         Err(TestEnum::Failed)
     }
 
-    pub(crate) fn message(_task: Box<dyn PerformableTask>) -> SerializableMessage {
+    pub(crate) fn message(name: &str, _task: Box<dyn PerformableTask>) -> SerializableMessage {
         SerializableMessage {
             enqueued_at: None,
             created_at: Utc::now().trunc_subsecs(0), // Force the resolution to be lower for testing so equality checks will "work"
             queue: "default".to_string(),
             job_id: Uuid::parse_str("8aa34936-1f60-404f-8cbb-973123e6744e").unwrap(), // Always have the same ID for jobs when testing the crate
-            task: "task".to_string(),
+            task: name.to_string(),
             payload: 123.into(),
             at: None,
             err: None,
@@ -115,15 +115,21 @@ pub(crate) mod test {
     }
 
     pub(crate) fn enqueued_successful_message() -> SerializableMessage {
-        message(boxed_task(successful.task()))
+        message(
+            "&ironworker_core::test::successful",
+            boxed_task(successful.task()),
+        )
     }
 
     pub(crate) fn successful_message() -> SerializableMessage {
-        message(boxed_task(successful.task()))
+        message(
+            "&ironworker_core::test::successful",
+            boxed_task(successful.task()),
+        )
     }
 
     pub(crate) fn failed_message() -> SerializableMessage {
-        let mut message = message(boxed_task(failed.task()));
+        let mut message = message("&ironworker_core::test::failed", boxed_task(failed.task()));
         message.err.replace(SerializableError::new(
             PerformLaterSnafu.into_error(Box::new(TestEnum::Failed)),
         ));

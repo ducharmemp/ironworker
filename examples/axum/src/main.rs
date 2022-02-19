@@ -156,6 +156,7 @@ async fn todos_create(
     db.write().unwrap().insert(todo.id, todo.clone());
     log_todos
         .task()
+        .wait(chrono::Duration::seconds(30))
         .perform_later(&ironworker, todo.id)
         .await
         .unwrap();

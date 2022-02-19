@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::Utc;
 use snafu::futures::TryFutureExt as SnafuTryFutureExt;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
@@ -120,7 +121,13 @@ impl<B: Broker> WorkerStateMachine<B> {
     }
 
     async fn wait_for_task(&mut self) -> WorkerEvent {
-        let message = self.shared_data.broker.dequeue(self.queue).await;
+        let message = self
+            .shared_data
+            .broker
+            .dequeue(self.queue)
+            .await
+            .expect("Could not dequeue message");
+
         if let Some(message) = message {
             debug!(id=?self.id, "Received job {}", message.job_id);
             WorkerEvent::TaskReceived(Box::new(message))
@@ -176,7 +183,7 @@ impl<B: Broker> WorkerStateMachine<B> {
     async fn post_execute(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Running post-execution hooks");
         for middleware in self.shared_data.middleware.iter() {
-            middleware.after_perform(&message).await;
+            middleware.after_perform(message).await;
         }
         if let Err(broker_error) = self
             .shared_data
@@ -212,10 +219,14 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn retry_task(&mut self, queue: &str, message: &mut SerializableMessage) -> WorkerEvent {
         debug!(id=?self.id, "Marking job {} for retry", message.job_id);
+        let future_time = Utc::now()
+            + chrono::Duration::seconds(
+                (message.retries.pow(4) + 15 + 30 * (message.retries + 1)) as i64, // Really should never have more than 64 bits of retries. Impossible even.
+            );
         if let Err(broker_error) = self
             .shared_data
             .broker
-            .enqueue(queue, message.clone())
+            .enqueue(queue, message.clone(), Some(future_time))
             .await
         {
             error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
@@ -380,7 +391,7 @@ mod test {
 
         shared
             .broker
-            .enqueue("default", message.clone())
+            .enqueue("default", message.clone(), None)
             .await
             .unwrap();
 
@@ -433,6 +444,7 @@ mod test {
                 from: WorkerState::Execute(enqueued_successful_message()),
                 to: WorkerState::ExecuteFailed({
                     let mut message = failed_message();
+                    message.task = "&ironworker_core::test::successful".to_string();
                     message.err = None;
                     message
                 }),
@@ -480,27 +492,29 @@ mod test {
         }
     }
 
-    // FIXME: The task isn't found, gotta figure out why but not tonight
-    // #[tokio::test]
-    // async fn pre_execute_calls_middleware() {
-    //     let ctr = Arc::new(Mutex::new(0));
+    #[tokio::test]
+    async fn pre_execute_calls_middleware() {
+        let ctr = Arc::new(Mutex::new(0));
 
-    //     struct TestMiddleware(Arc<Mutex<usize>>);
+        struct TestMiddleware(Arc<Mutex<usize>>);
 
-    //     #[async_trait]
-    //     impl IronworkerMiddleware for TestMiddleware {
-    //         async fn before_perform(&self, _message: &mut SerializableMessage) {
-    //             let mut ctr = self.0.lock().unwrap();
-    //             *ctr += 1;
-    //         }
-    //     }
+        #[async_trait]
+        impl IronworkerMiddleware for TestMiddleware {
+            async fn before_perform(&self, _message: &mut SerializableMessage) {
+                let mut ctr = self.0.lock().unwrap();
+                *ctr += 1;
+            }
+        }
 
-    //     let mut message = enqueued_successful_message();
-    //     let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
-    //     let mut worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
-    //     worker.pre_execute(&mut message).await;
-    //     assert_eq!(*ctr.lock().unwrap(), 1);
-    // }
+        let mut message = enqueued_successful_message();
+        let shared = shared_context_with_middleware(vec![Box::new(TestMiddleware(ctr.clone()))]);
+        let mut worker = WorkerStateMachine::new("test-id".to_string(), "default", shared);
+        assert_eq!(
+            worker.pre_execute(&mut message).await,
+            WorkerEvent::PreExecuteCompleted
+        );
+        assert_eq!(*ctr.lock().unwrap(), 1);
+    }
 
     #[tokio::test]
     async fn post_execute_calls_middleware() {

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
 
 use crate::{Broker, SerializableMessage};
@@ -15,7 +16,12 @@ pub struct InProcessBroker {
 impl Broker for InProcessBroker {
     type Error = ();
 
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error> {
+    async fn enqueue(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+        _at: Option<DateTime<Utc>>,
+    ) -> Result<(), Self::Error> {
         let mut write_guard = self.queues.lock().await;
         let queue = write_guard.entry(queue.to_string()).or_default();
         queue.push_back(message);
@@ -34,9 +40,9 @@ impl Broker for InProcessBroker {
         Ok(())
     }
 
-    async fn dequeue(&self, from: &str) -> Option<SerializableMessage> {
+    async fn dequeue(&self, from: &str) -> Result<Option<SerializableMessage>, Self::Error> {
         let mut write_guard = self.queues.lock().await;
         let queue = write_guard.entry(from.to_string()).or_default();
-        queue.pop_front()
+        Ok(queue.pop_front())
     }
 }

@@ -63,7 +63,7 @@ macro_rules! impl_task_function {
                 self
             }
 
-            fn retries(mut self, count: usize) -> Self {
+            fn retries(mut self, count: u64) -> Self {
                 self.config.retries.replace(count);
                 self
             }

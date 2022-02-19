@@ -42,7 +42,7 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
     #[must_use]
-    fn retries(self, count: usize) -> Self;
+    fn retries(self, count: u64) -> Self;
     #[must_use]
     fn wait_until(self, future_time: DateTime<Utc>) -> Self;
     #[must_use]

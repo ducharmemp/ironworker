@@ -40,7 +40,7 @@ pub struct SerializableError {
 impl SerializableError {
     pub(crate) fn new(err: IronworkerError) -> Self {
         Self {
-            message: format!("{:#?}", err),
+            message: format!("{:#?}: {}", &err, &err),
         }
     }
 }
@@ -74,7 +74,7 @@ pub struct SerializableMessage {
     #[builder(default)]
     pub err: Option<SerializableError>,
     /// An incrementing number representing the number of times this job has been retried
-    pub retries: usize,
+    pub retries: u64,
     /// A broker-specific field, mainly for backends like SQS or RabbitMQ where a message needs to be acknowledged with a specific identifier provided by
     /// the datastore.
     #[serde(default)]

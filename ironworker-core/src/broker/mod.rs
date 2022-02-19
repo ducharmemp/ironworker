@@ -1,6 +1,7 @@
 mod process;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::message::SerializableMessage;
 pub use process::InProcessBroker;
@@ -21,7 +22,12 @@ pub trait Broker: Send + Sync + 'static {
     /// Sends a given message to a broker. The serialization and format of the message is handled by the broker,
     /// `SerializableMessage` implements serde's Serialize/Deserialize traits. Returns a broker-specific error on failure
     /// to communicate or enqueue the task into the backing database.
-    async fn enqueue(&self, queue: &str, message: SerializableMessage) -> Result<(), Self::Error>;
+    async fn enqueue(
+        &self,
+        queue: &str,
+        message: SerializableMessage,
+        _at: Option<DateTime<Utc>>,
+    ) -> Result<(), Self::Error>;
 
     /// Sends a failed message to a special deadletter queue when the task has failed more than the maximum allowable tries.
     /// If the broker is not configured to manually deadletter (for example, in RabbitMQ or SQS where deadlettering is automatic),
@@ -36,7 +42,7 @@ pub trait Broker: Send + Sync + 'static {
 
     /// Receives a message from the backing database. This function should block on a timeout until a message is received, or return `None` if
     /// no message has been received within the time period allotted.
-    async fn dequeue(&self, from: &str) -> Option<SerializableMessage>;
+    async fn dequeue(&self, from: &str) -> Result<Option<SerializableMessage>, Self::Error>;
 
     /// Sends a heartbeat to the backing database. If the broker is not configured to perform heartbeats, this function is a noop.
     async fn heartbeat(&self, _worker_id: &str) -> Result<(), Self::Error> {

@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
     pub(crate) queue: Option<&'static str>,
-    pub(crate) retries: Option<usize>,
+    pub(crate) retries: Option<u64>,
     pub(crate) timeout: Option<u64>,
     pub(crate) at: Option<DateTime<Utc>>,
 }
@@ -11,7 +11,7 @@ pub struct Config {
 #[derive(Debug, Clone, Copy)]
 pub struct UnwrappedConfig {
     pub(crate) queue: &'static str,
-    pub(crate) retries: usize,
+    pub(crate) retries: u64,
     pub(crate) timeout: u64,
     pub(crate) at: Option<DateTime<Utc>>,
 }

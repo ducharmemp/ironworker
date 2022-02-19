@@ -2,6 +2,7 @@ use aws_sdk_sqs::{
     error::{DeleteMessageError, GetQueueUrlError, ReceiveMessageError, SendMessageError},
     SdkError,
 };
+use serde_json::Error as SerdeError;
 use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
@@ -21,4 +22,6 @@ pub enum SqsBrokerError {
     DeleteMessageFailed {
         source: SdkError<DeleteMessageError>,
     },
+    #[snafu(display("Could not deserialize message"))]
+    DeserializeMessageFailed { source: SerdeError },
 }

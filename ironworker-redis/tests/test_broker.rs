@@ -31,6 +31,7 @@ async fn test_enqueue() {
                 delivery_tag: None,
                 message_state: Default::default(),
             },
+            None,
         )
         .await
         .unwrap();
@@ -59,12 +60,12 @@ async fn test_dequeue() {
         message_state: Default::default(),
     };
     broker
-        .enqueue(queue, enqueued_message.clone())
+        .enqueue(queue, enqueued_message.clone(), None)
         .await
         .unwrap();
 
     let message = broker.dequeue(queue).await;
-    assert_eq!(enqueued_message, message.unwrap());
+    assert_eq!(Some(enqueued_message), message.unwrap());
 }
 
 #[tokio::test]
@@ -77,7 +78,7 @@ async fn test_dequeue_no_message() {
         .unwrap();
     let queue = "test_dequeue_no_message";
     let message = broker.dequeue(queue).await;
-    assert_eq!(None, message);
+    assert_eq!(Ok(None), message);
 }
 
 #[tokio::test]

@@ -54,6 +54,7 @@ async fn test_enqueue() {
                 delivery_tag: None,
                 message_state: Default::default(),
             },
+            None,
         )
         .await
         .unwrap();
@@ -99,12 +100,12 @@ async fn test_dequeue() {
         message_state: Default::default(),
     };
     broker
-        .enqueue(queue, enqueued_message.clone())
+        .enqueue(queue, enqueued_message.clone(), None)
         .await
         .unwrap();
 
     let message = broker.dequeue(queue).await;
-    let dequeued = message.unwrap();
+    let dequeued = message.unwrap().unwrap();
     assert_eq!(enqueued_message.job_id, dequeued.job_id);
     assert_eq!(enqueued_message.task, dequeued.task);
     assert_eq!(enqueued_message.queue, dequeued.queue);
@@ -141,6 +142,6 @@ async fn test_dequeue_no_message() {
     let broker = SqsBroker::from_client(client.clone());
     broker.register_worker("test-worker", queue).await.unwrap();
 
-    let message = broker.dequeue(queue).await;
+    let message = broker.dequeue(queue).await.unwrap();
     assert_eq!(None, message);
 }
