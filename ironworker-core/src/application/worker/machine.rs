@@ -247,7 +247,7 @@ impl<B: Broker> WorkerStateMachine<B> {
             .deadletter(queue, message.clone())
             .await
         {
-            error!(id=?self.id, "Retrying job failed, {:?}", broker_error);
+            error!(id=?self.id, "Deadlettering job failed, {:?}", broker_error);
         }
         WorkerEvent::DeadletterCompleted
     }
@@ -320,17 +320,19 @@ impl<B: Broker> WorkerStateMachine<B> {
 mod test {
     use std::collections::HashMap;
     use std::iter::FromIterator;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     use snafu::Snafu;
     use tokio::time;
 
+    use crate::middleware::extract::Extract;
     use crate::middleware::MockIronworkerMiddleware;
     use crate::test::{
         assert_send, assert_sync, boxed_task, enqueued_successful_message, failed, failed_message,
-        successful, successful_message,
+        message, successful, successful_message,
     };
-    use crate::IronworkerMiddleware;
     use crate::{broker::InProcessBroker, IntoTask, Task};
+    use crate::{IronworkerMiddleware, Message};
 
     use super::*;
 
@@ -401,6 +403,96 @@ mod test {
     }
 
     #[tokio::test]
+    async fn execute_calls_the_task() {
+        time::pause();
+
+        let counter = Arc::new(AtomicU64::new(0));
+
+        async fn incr_counter(
+            Message(count): Message<u64>,
+            Extract(counter): Extract<Arc<AtomicU64>>,
+        ) -> Result<(), TestEnum> {
+            counter.fetch_add(count, Ordering::SeqCst);
+            Ok(())
+        }
+
+        let mut message = message(
+            incr_counter.task().name(),
+            Box::new(incr_counter.task().into_performable_task()),
+        );
+        message.message_state.insert(counter.clone());
+
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(
+                incr_counter.task().name(),
+                (
+                    boxed_task(incr_counter.task()),
+                    incr_counter.task().config(),
+                ),
+            )]),
+        });
+
+        let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
+        worker.execute(&mut message).await;
+        assert_eq!(counter.load(Ordering::SeqCst), 123);
+    }
+
+    #[tokio::test]
+    async fn execute_transitions_to_failed_on_err() {
+        time::pause();
+
+        let shared = shared_context();
+
+        let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
+        let event = worker.execute(&mut failed_message()).await;
+        assert_eq!(event, WorkerEvent::ExecuteFailed);
+    }
+
+    #[tokio::test]
+    async fn execute_failed_retries_the_task() {
+        time::pause();
+
+        let mut message = enqueued_successful_message();
+        let mut config = successful.task().config();
+        config.retries.replace(1);
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(
+                successful.task().name(),
+                (boxed_task(successful.task()), config),
+            )]),
+        });
+
+        let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
+        let event = worker.execute_failed(&mut message).await;
+        assert_eq!(event, WorkerEvent::ShouldRetry("default"));
+    }
+
+    #[tokio::test]
+    async fn execute_failed_deadletters_the_task() {
+        time::pause();
+
+        let mut message = enqueued_successful_message();
+        let mut config = successful.task().config();
+        config.retries.replace(0);
+        let shared = Arc::new(SharedData {
+            broker: InProcessBroker::default(),
+            middleware: Default::default(),
+            tasks: HashMap::from_iter([(
+                successful.task().name(),
+                (boxed_task(successful.task()), config),
+            )]),
+        });
+
+        let mut worker = WorkerStateMachine::new("id".to_string(), "default", shared);
+        let event = worker.execute_failed(&mut message).await;
+        assert_eq!(event, WorkerEvent::ShouldDeadletter("default"));
+    }
+
+    #[tokio::test]
     async fn state_machine_flow() {
         struct StateTest {
             from: WorkerState,
@@ -434,6 +526,11 @@ mod test {
                 from: WorkerState::PreExecute(enqueued_successful_message()),
                 to: WorkerState::Execute(enqueued_successful_message()),
                 event: WorkerEvent::PreExecuteCompleted,
+            },
+            StateTest {
+                from: WorkerState::PreExecute(enqueued_successful_message()),
+                to: WorkerState::ExecuteFailed(enqueued_successful_message()),
+                event: WorkerEvent::PreExecuteFailed,
             },
             StateTest {
                 from: WorkerState::Execute(enqueued_successful_message()),
