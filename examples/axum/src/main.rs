@@ -24,12 +24,13 @@ use axum::{
     routing::{get, patch},
     Json, Router,
 };
-use ironworker_core::{
+use ironworker::{
+    self,
     middleware::extract::{AddMessageStateMiddleware, Extract},
+    redis::RedisBroker,
     IntoTask, IronworkerApplication, IronworkerApplicationBuilder, IronworkerMiddleware, Message,
     SerializableMessage, Task,
 };
-use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -76,7 +77,7 @@ async fn main() {
 
     // Compose the routes
     let app = Router::new()
-        .merge(ironworker_axum::endpoints(ironworker.clone()))
+        .merge(ironworker::axum::endpoints(ironworker.clone()))
         .route("/todos", get(todos_index).post(todos_create))
         .route("/todos/:id", patch(todos_update).delete(todos_delete))
         .route("/count", get(log_count))

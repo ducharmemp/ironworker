@@ -10,6 +10,8 @@ use mockall::*;
 use crate::message::SerializableMessage;
 pub use process::InProcessBroker;
 
+/// The communication strategy to fetch and store jobs.
+///
 /// A broker implementation is the main way to communicate with a backing datastore. The backing datastore can be a queue, database, or even in memory,
 /// but these details are left to the implementors of this trait. Because of the differences between different services (ex. redis vs SQS vs RabbitMQ),
 /// not all methods on the broker are required to be implemented and will default to noops if the method is not applicable for a given datastore. An
@@ -17,6 +19,8 @@ pub use process::InProcessBroker;
 #[cfg_attr(test, automock(type Error=();))]
 #[async_trait]
 pub trait Broker: Send + Sync + 'static {
+    /// The type of error that the broker can return when communicating with the backing datastore fails. This is mainly used for logging/reporting, since there's not much
+    /// Ironworker can do at this point in time if the backing datastore fails.
     type Error: std::fmt::Debug;
 
     // Sets up a worker in the backing datastore. Useful for things like initalization of local structs for queues or general setup logic.

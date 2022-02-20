@@ -32,19 +32,26 @@ auxiliary_trait!(
 );
 auxiliary_trait!(SendSyncStatic, Send + Sync + 'static);
 
+/// Represents a task that can be `perform`ed.
 #[async_trait]
 pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
     SendSyncStatic + Sized + Clone
 {
+    /// Returns the name of the task
     fn name(&self) -> &'static str;
+    /// Returns the config of the task
     fn config(&self) -> Config;
 
+    /// Sets the queue for the task to run on, defaults to "default"
     #[must_use]
     fn queue_as(self, queue_name: &'static str) -> Self;
+    /// Sets the number of times this task should be retried on failure. Defaults to 0
     #[must_use]
     fn retries(self, count: u64) -> Self;
+    /// Sets up the task to be run at a future time.
     #[must_use]
     fn wait_until(self, future_time: DateTime<Utc>) -> Self;
+    /// Sets up a task to be run at a future time, specified by a given offset
     #[must_use]
     fn wait(self, delay: Duration) -> Self;
 

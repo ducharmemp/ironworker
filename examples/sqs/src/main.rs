@@ -1,10 +1,9 @@
 #![deny(clippy::all)]
 use async_trait::async_trait;
 use aws_sdk_sqs::{Client, Endpoint};
-use ironworker_core::{
-    IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
+use ironworker::{
+    sqs::SqsBroker, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
 };
-use ironworker_sqs::SqsBroker;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 

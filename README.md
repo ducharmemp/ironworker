@@ -1,6 +1,15 @@
+# Ironworker
+
+An async-first job framework for Rust.
+
 [![Ironworker CI](https://github.com/ducharmemp/ironworker/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/ducharmemp/ironworker/actions/workflows/build.yml)
 [![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 [![codecov](https://codecov.io/gh/ducharmemp/ironworker/branch/main/graph/badge.svg?token=NNE22T44I0)](https://codecov.io/gh/ducharmemp/ironworker)
+
+## Overview
+
+Similar to ActiveJob in the Ruby on Rails world, Ironworker's goal is to provide a backend-agnostic framework for developing applications leveraging asynchronous job queueing mechanisms.
+
 
 ## License
 

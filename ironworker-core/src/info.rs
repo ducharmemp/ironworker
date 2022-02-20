@@ -33,12 +33,16 @@ pub struct QueueInfo {
     pub size: u64,
 }
 
-/// Metadata struct describing
+/// Metadata struct describing statistics of Ironworker
 #[derive(Clone, Copy, Debug)]
 pub struct Stats {
+    /// The number of jobs that have been processed
     pub processed: u64,
+    /// The number of jobs that have failed
     pub failed: u64,
+    /// The number of jobs that have been scheduled
     pub scheduled: u64,
+    /// The number of jobs that have been enqueued
     pub enqueued: u64,
 }
 
