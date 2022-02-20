@@ -12,4 +12,14 @@ categories = ["web-programming:async-job", "web-programming:job-queue"]
 [package.metadata]
 msrv = "1.54.0"
 
+[features]
+default = []
+redis = ["ironworker-redis"]
+sqs = ["ironworker-sqs"]
+axum = ["ironworker-axum"]
+
 [dependencies]
+ironworker-core = { path = "../ironworker-core" }
+ironworker-redis = { path = "../ironworker-redis", optional = true }
+ironworker-sqs = { path = "../ironworker-sqs", optional = true }
+ironworker-axum = { path = "../ironworker-axum", optional = true }

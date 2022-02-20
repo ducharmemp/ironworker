@@ -1,9 +1,8 @@
 #![deny(clippy::all)]
 use async_trait::async_trait;
-use ironworker_core::{
-    IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
+use ironworker::{
+    redis::RedisBroker, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
 };
-use ironworker_redis::RedisBroker;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 

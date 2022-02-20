@@ -8,8 +8,7 @@ publish = false
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-ironworker-core = { path = "../../ironworker-core" }
-ironworker-redis = { path = "../../ironworker-redis" }
+ironworker = { path = "../../ironworker", features = ["redis"] }
 serde = "1"
 snafu = "0.7"
 tokio = { version = "1", features = ["full"] }
