@@ -12,6 +12,6 @@ ironworker-core = { path = "../../ironworker-core" }
 ironworker-redis = { path = "../../ironworker-redis" }
 serde = "1"
 snafu = "0.7"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.17", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

@@ -22,7 +22,7 @@ redis = { version = "0.21", features = [ "tokio-comp", "aio", "connection-manage
 serde = "1"
 serde_json = "1"
 uuid = { version = "0.8", features = ["v4"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.17" }
 
 [dev-dependencies]
 testcontainers = "0.12.0"
