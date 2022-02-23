@@ -4,9 +4,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::future;
-use ironworker_core::info::{
-    BrokerInfo, DeadletteredInfo, QueueInfo, ScheduledInfo, Stats, WorkerInfo,
-};
+use ironworker_core::info::{BrokerInfo, QueueInfo, Stats, WorkerInfo};
 use ironworker_core::Broker;
 use ironworker_core::SerializableMessage;
 use redis::aio::ConnectionManager;
@@ -63,6 +61,10 @@ impl RedisBroker {
         "ironworker:stats".to_string()
     }
 
+    fn format_scheduled_queues_key() -> String {
+        "ironworker:scheduled".to_string()
+    }
+
     fn format_failed_queues_key() -> String {
         "ironworker:failed".to_string()
     }
@@ -87,7 +89,9 @@ impl Broker for RedisBroker {
         if let Some(at) = at {
             let scheduled_set_key = Self::format_scheduled_set_key(queue);
             let message = RedisMessage::from(message);
-            conn.zadd::<_, _, _, ()>(scheduled_set_key, message, at.timestamp_millis())
+            conn.zadd(&scheduled_set_key, message, at.timestamp_millis())
+                .await?;
+            conn.sadd(Self::format_scheduled_queues_key(), scheduled_set_key)
                 .await?;
             conn.hincr(Self::format_stats_key(), "scheduled", 1).await?;
         } else {
@@ -247,7 +251,7 @@ impl BrokerInfo for RedisBroker {
         }
     }
 
-    async fn deadlettered(&self) -> Vec<DeadletteredInfo> {
+    async fn deadlettered(&self) -> Vec<SerializableMessage> {
         let mut connection = self.connection.clone();
         let failed_queues = connection
             .smembers::<_, Vec<String>>(Self::format_failed_queues_key())
@@ -264,13 +268,6 @@ impl BrokerInfo for RedisBroker {
                     .unwrap_or_default();
                 let messages: Vec<SerializableMessage> =
                     messages.into_iter().map(Into::into).collect();
-                let messages: Vec<DeadletteredInfo> = messages
-                    .into_iter()
-                    .map(|message| DeadletteredInfo {
-                        err: message.err,
-                        job_id: message.job_id,
-                    })
-                    .collect();
                 messages
             })
             .collect();
@@ -278,7 +275,27 @@ impl BrokerInfo for RedisBroker {
         future::join_all(futs).await.into_iter().flatten().collect()
     }
 
-    async fn scheduled(&self) -> Vec<ScheduledInfo> {
-        vec![]
+    async fn scheduled(&self) -> Vec<SerializableMessage> {
+        let mut connection = self.connection.clone();
+        let scheduled_queues = connection
+            .smembers::<_, Vec<String>>(Self::format_scheduled_queues_key())
+            .await
+            .unwrap_or_default();
+
+        let futs: Vec<_> = scheduled_queues
+            .into_iter()
+            .map(|queue| async {
+                let mut conn = self.connection.clone();
+                let messages = conn
+                    .zrange::<_, Vec<RedisMessage>>(queue, 0, -1)
+                    .await
+                    .unwrap_or_default();
+                let messages: Vec<SerializableMessage> =
+                    messages.into_iter().map(Into::into).collect();
+                messages
+            })
+            .collect();
+
+        future::join_all(futs).await.into_iter().flatten().collect()
     }
 }

@@ -10,18 +10,24 @@
       <thead>
         <th>Job Id</th>
         <th>Error</th>
+        <th>Retry</th>
       </thead>
       {% for job in deadlettered %}
       <tr>
-        <td>{{job.job_id}}</td>
-        <td>
-          {% match job.err %}
-          {% when Some with (val) %}
-          {{val.message}}
-          {% when None %}
-          ""
-          {%endmatch %}
-        </td>
+        <form method="post">
+          <td class="control"><input id="job_id" name="job_id" class="input is-static" value="{{job.job_id}}" readonly></td>
+          <td>
+            {% match job.err %}
+            {% when Some with (val) %}
+            {{val.message}}
+            {% when None %}
+            ""
+            {%endmatch %}
+          </td>
+          <td>
+            <button class="control button is-danger is-light">Retry Job</button>
+          </td>
+        </form>
       </tr>
       {% endfor %}
     </tbody>

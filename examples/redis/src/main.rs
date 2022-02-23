@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .perform_later(&app, Complex::new("Hello world".to_string(), 123421))
         .await?;
 
-    for _ in 0..10000 {
+    for _ in 0..100 {
         my_panicking_task.task().perform_later(&app, 123).await?;
         my_task.task().perform_later(&app, 123).await?;
         my_async_task.task().perform_later(&app, 123).await?;
