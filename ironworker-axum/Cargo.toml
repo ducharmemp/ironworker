@@ -18,3 +18,5 @@ askama_axum = "0.1"
 askama = "0.11"
 axum = "0.4"
 ironworker-core = { path = "../ironworker-core" }
+serde = "1"
+uuid = { version = "0.8", features = ["serde"] }

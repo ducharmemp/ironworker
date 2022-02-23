@@ -1,12 +1,15 @@
 #![deny(clippy::all, clippy::cargo)]
 use std::sync::Arc;
 
+use serde::Deserialize;
 use askama_axum::Template;
-use axum::{extract::Extension, routing::get, AddExtensionLayer, Router};
+use axum::{extract::{Extension, Form}, routing::get, AddExtensionLayer, Router};
 use ironworker_core::{
-    info::{ApplicationInfo, BrokerInfo, DeadletteredInfo, QueueInfo, WorkerInfo},
+    SerializableMessage,
+    info::{ApplicationInfo, BrokerInfo, QueueInfo, WorkerInfo},
     Broker, IronworkerApplication,
 };
+use uuid::Uuid;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -44,7 +47,12 @@ async fn stats_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) -
 #[derive(Template)]
 #[template(path = "failed.html")]
 struct FailedTemplate {
-    deadlettered: Vec<DeadletteredInfo>,
+    deadlettered: Vec<SerializableMessage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct JobRetry {
+    job_id: Uuid
 }
 
 async fn failed_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) -> FailedTemplate {
@@ -53,11 +61,15 @@ async fn failed_get(Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) 
     FailedTemplate { deadlettered }
 }
 
+async fn failed_post(Form(job_retry): Form<JobRetry>, Extension(ironworker): Extension<Arc<dyn ApplicationInfo>>) {
+    
+}
+
 pub fn endpoints<B: Broker + BrokerInfo>(ironworker: Arc<IronworkerApplication<B>>) -> Router {
     let ironworker_info: Arc<dyn ApplicationInfo> = ironworker;
     Router::new()
         .route("/ironworker/", get(overview_get))
-        .route("/ironworker/failed", get(failed_get))
+        .route("/ironworker/failed", get(failed_get).post(failed_post))
         .route("/ironworker/stats", get(stats_get))
         .layer(AddExtensionLayer::new(ironworker_info))
 }

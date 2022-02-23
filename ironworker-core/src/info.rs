@@ -8,9 +8,8 @@
 //! data stores like Redis or Postgres.
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
-use crate::{message::SerializableError, Broker, IronworkerApplication};
+use crate::{Broker, IronworkerApplication, SerializableMessage};
 
 /// A struct describing a Worker, including the queue it's listening on, the name of the worker (auto-generated),
 /// and the last time there was a heartbeat.
@@ -45,23 +44,13 @@ pub struct Stats {
     /// The number of jobs that have been enqueued
     pub enqueued: u64,
 }
-
-#[derive(Debug)]
-pub struct DeadletteredInfo {
-    pub job_id: Uuid,
-    pub err: Option<SerializableError>,
-}
-
-#[allow(missing_copy_implementations, missing_debug_implementations)]
-pub struct ScheduledInfo {}
-
 #[async_trait]
 pub trait ApplicationInfo: Send + Sync {
     async fn workers(&self) -> Vec<WorkerInfo>;
     async fn queues(&self) -> Vec<QueueInfo>;
     async fn stats(&self) -> Stats;
-    async fn deadlettered(&self) -> Vec<DeadletteredInfo>;
-    async fn scheduled(&self) -> Vec<ScheduledInfo>;
+    async fn deadlettered(&self) -> Vec<SerializableMessage>;
+    async fn scheduled(&self) -> Vec<SerializableMessage>;
 }
 
 /// This trait allows a given broker to report metadata, usually to a frontend application of some kind.
@@ -70,8 +59,8 @@ pub trait BrokerInfo: Broker {
     async fn workers(&self) -> Vec<WorkerInfo>;
     async fn queues(&self) -> Vec<QueueInfo>;
     async fn stats(&self) -> Stats;
-    async fn deadlettered(&self) -> Vec<DeadletteredInfo>;
-    async fn scheduled(&self) -> Vec<ScheduledInfo>;
+    async fn deadlettered(&self) -> Vec<SerializableMessage>;
+    async fn scheduled(&self) -> Vec<SerializableMessage>;
 }
 
 #[async_trait]
@@ -85,10 +74,10 @@ impl<B: BrokerInfo> ApplicationInfo for IronworkerApplication<B> {
     async fn stats(&self) -> Stats {
         self.shared_data.broker.stats().await
     }
-    async fn deadlettered(&self) -> Vec<DeadletteredInfo> {
+    async fn deadlettered(&self) -> Vec<SerializableMessage> {
         self.shared_data.broker.deadlettered().await
     }
-    async fn scheduled(&self) -> Vec<ScheduledInfo> {
+    async fn scheduled(&self) -> Vec<SerializableMessage> {
         self.shared_data.broker.scheduled().await
     }
 }
