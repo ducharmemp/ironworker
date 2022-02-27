@@ -38,9 +38,8 @@ fn from_elem(c: &mut Criterion) {
         .build()
         .unwrap();
 
-    let local_client = Arc::new(
-        Client::open::<String>(format!("redis://localhost:{}", host_port).into()).unwrap(),
-    );
+    let local_client =
+        Arc::new(Client::open::<String>(format!("redis://localhost:{}", host_port)).unwrap());
 
     let mut group = c.benchmark_group("redis");
     group.sample_size(10);
@@ -60,7 +59,7 @@ fn from_elem(c: &mut Criterion) {
 
     group.bench_with_input(BenchmarkId::new("enqueue", size), &size, |b, &s| {
         b.to_async(&rt).iter(|| async {
-            bench_task.task().perform_later(&app, s).await.unwrap();
+            bench_task.task().perform_later(&*app, s).await.unwrap();
         });
     });
 
@@ -84,7 +83,7 @@ fn from_elem(c: &mut Criterion) {
                             .build(),
                     );
                     for val in 0..100 {
-                        bench_task.task().perform_later(&app, val).await.unwrap();
+                        bench_task.task().perform_later(&*app, val).await.unwrap();
                     }
                     tx.send(app).unwrap();
                 });

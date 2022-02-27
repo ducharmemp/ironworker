@@ -7,13 +7,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use snafu::{AsErrorSource, ResultExt};
 
-use crate::application::IronworkerApplication;
-use crate::broker::Broker;
 use crate::error::{
     CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu, PerformNowSnafu,
 };
 use crate::message::{Message, SerializableMessageBuilder};
-use crate::{IronworkerError, SerializableMessage};
+use crate::{Enqueuer, IronworkerError, SerializableMessage};
 
 use super::config::Config;
 use super::IntoPerformableTask;
@@ -57,11 +55,7 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
 
     async fn perform(self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
 
-    async fn perform_now<B: Broker + 'static>(
-        self,
-        _app: &IronworkerApplication<B>,
-        payload: T,
-    ) -> Result<(), IronworkerError> {
+    async fn perform_now<E: Enqueuer>(self, _app: &E, payload: T) -> Result<(), IronworkerError> {
         let unwrapped_config = self.config().unwrap();
         let value = to_value(payload).context(CouldNotSerializePayloadSnafu {})?;
 
@@ -77,11 +71,7 @@ pub trait Task<T: Serialize + Send + Into<Message<T>> + 'static>:
     }
 
     /// Enqueues a task in a backing datastore
-    async fn perform_later<B: Broker + 'static>(
-        self,
-        app: &IronworkerApplication<B>,
-        payload: T,
-    ) -> Result<(), IronworkerError> {
+    async fn perform_later<E: Enqueuer>(self, app: &E, payload: T) -> Result<(), IronworkerError> {
         let fut = app.enqueue(self.name(), payload, self.config());
         fut.await
     }

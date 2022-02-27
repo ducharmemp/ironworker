@@ -48,6 +48,7 @@
 mod application;
 mod broker;
 mod config;
+mod enqueuer;
 mod error;
 mod from_payload;
 pub mod info;
@@ -57,6 +58,7 @@ mod task;
 
 pub use application::{IronworkerApplication, IronworkerApplicationBuilder};
 pub use broker::{Broker, InProcessBroker};
+pub use enqueuer::Enqueuer;
 pub use error::{IronworkerError, IronworkerResult};
 pub use from_payload::FromPayload;
 pub use message::{Message, SerializableMessage};
