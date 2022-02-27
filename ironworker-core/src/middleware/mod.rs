@@ -1,4 +1,5 @@
 //!
+pub mod enqueue;
 pub mod extract;
 
 use async_trait::async_trait;

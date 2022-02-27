@@ -151,6 +151,8 @@ impl<B: Broker> WorkerStateMachine<B> {
 
     async fn execute(&mut self, message: &mut SerializableMessage) -> WorkerEvent {
         let handler_entry = self.shared_data.tasks.get(&message.task.as_str());
+        message.message_state.insert(self.shared_data.clone());
+
         // This is safe because we already check the tasks in pre-execute for the task key
         #[allow(clippy::unwrap_used)]
         let (handler, config) = handler_entry.unwrap();

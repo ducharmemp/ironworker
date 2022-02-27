@@ -239,7 +239,7 @@ impl BrokerInfo for RedisBroker {
     async fn stats(&self) -> Stats {
         let mut connection = self.connection.clone();
         let stats = connection
-            .get::<_, HashMap<String, u64>>(Self::format_stats_key())
+            .hgetall::<_, HashMap<String, u64>>(Self::format_stats_key())
             .await
             .unwrap_or_default();
 

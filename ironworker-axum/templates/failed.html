@@ -15,7 +15,9 @@
       {% for job in deadlettered %}
       <tr>
         <form method="post">
-          <td class="control"><input id="job_id" name="job_id" class="input is-static" value="{{job.job_id}}" readonly></td>
+          <input type="hidden" id="payload" name="payload" value="{{job.payload}}">
+          <input type="hidden" id="task" name="task" value="{{job.task}}">
+          <td>{{job.job_id}}</td>
           <td>
             {% match job.err %}
             {% when Some with (val) %}

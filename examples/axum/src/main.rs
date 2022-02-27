@@ -158,7 +158,7 @@ async fn todos_create(
     log_todos
         .task()
         .wait(chrono::Duration::seconds(30))
-        .perform_later(&ironworker, todo.id)
+        .perform_later(&*ironworker, todo.id)
         .await
         .unwrap();
 
