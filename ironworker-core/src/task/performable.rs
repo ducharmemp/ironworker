@@ -3,9 +3,9 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use serde::Serialize;
 
-use crate::{SerializableMessage, Task};
+use crate::message::SerializableMessage;
 
-use super::TaskError;
+use super::{Task, TaskError};
 
 pub struct IntoPerformableTask<Tsk, T> {
     inner: Tsk,
@@ -42,7 +42,7 @@ where
 }
 
 #[async_trait]
-pub(crate) trait PerformableTask: Send + Sync {
+pub trait PerformableTask: Send + Sync {
     async fn perform(&mut self, payload: SerializableMessage) -> Result<(), Box<dyn TaskError>>;
     fn clone_box(&self) -> Box<dyn PerformableTask>;
 }

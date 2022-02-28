@@ -1,18 +1,22 @@
-#![deny(clippy::all, clippy::cargo)]
 use std::sync::Arc;
 
 use askama_axum::Template;
 use axum::{
     extract::{Extension, Form},
+    http::StatusCode,
     routing::get,
     AddExtensionLayer, Router,
 };
 use ironworker_core::{
+    broker::Broker,
+    enqueuer::Enqueuer,
     info::{ApplicationInfo, BrokerInfo, QueueInfo, WorkerInfo},
-    Broker, Enqueuer, IronworkerApplication, SerializableMessage,
+    message::SerializableMessage,
 };
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::application::IronworkerApplication;
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -74,11 +78,14 @@ async fn failed_get<B: Broker + BrokerInfo>(
 async fn failed_post<B: Broker + BrokerInfo>(
     Form(job_retry): Form<JobRetry>,
     Extension(ironworker): Extension<Arc<IronworkerApplication<B>>>,
-) {
-    ironworker
+) -> Result<(), StatusCode> {
+    let retry_result = ironworker
         .enqueue(&job_retry.task, job_retry.payload, Default::default())
-        .await
-        .unwrap();
+        .await;
+    if retry_result.is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    Ok(())
 }
 
 pub fn endpoints<B: Broker + BrokerInfo>(ironworker: Arc<IronworkerApplication<B>>) -> Router {

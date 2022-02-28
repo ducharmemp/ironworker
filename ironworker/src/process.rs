@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
 
-use crate::{Broker, SerializableMessage};
+use ironworker_core::broker::Broker;
+use ironworker_core::message::SerializableMessage;
 
 #[derive(Default, Debug)]
 pub struct InProcessBroker {

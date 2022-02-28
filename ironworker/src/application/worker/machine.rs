@@ -2,6 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use ironworker_core::broker::Broker;
+use ironworker_core::message::SerializableMessage;
 use snafu::futures::TryFutureExt as SnafuTryFutureExt;
 use tokio::select;
 use tokio::sync::broadcast::Receiver;
@@ -10,7 +12,6 @@ use tracing::{debug, error, info};
 
 use crate::error::{PerformLaterSnafu, TimeoutSnafu};
 use crate::message::SerializableError;
-use crate::{Broker, SerializableMessage};
 
 use super::super::shared::SharedData;
 
@@ -324,17 +325,18 @@ mod test {
     use std::iter::FromIterator;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use ironworker_core::message::Message;
+    use ironworker_core::middleware::IronworkerMiddleware;
+    use ironworker_core::task::{IntoTask, Task};
     use snafu::Snafu;
     use tokio::time;
 
-    use crate::middleware::extract::Extract;
-    use crate::middleware::MockIronworkerMiddleware;
+    use crate::extract::Extract;
+    use crate::process::InProcessBroker;
     use crate::test::{
         assert_send, assert_sync, boxed_task, enqueued_successful_message, failed, failed_message,
-        message, successful, successful_message,
+        message, successful, successful_message, MockTestMiddleware,
     };
-    use crate::{broker::InProcessBroker, IntoTask, Task};
-    use crate::{IronworkerMiddleware, Message};
 
     use super::*;
 
@@ -543,7 +545,7 @@ mod test {
                 from: WorkerState::Execute(enqueued_successful_message()),
                 to: WorkerState::ExecuteFailed({
                     let mut message = failed_message();
-                    message.task = "&ironworker_core::test::successful".to_string();
+                    message.task = "&ironworker::test::successful".to_string();
                     message.err = None;
                     message
                 }),
@@ -593,7 +595,7 @@ mod test {
 
     #[tokio::test]
     async fn pre_execute_calls_middleware() {
-        let mut middleware = MockIronworkerMiddleware::new();
+        let mut middleware = MockTestMiddleware::new();
         middleware.expect_before_perform().times(1).return_const(());
 
         let mut message = enqueued_successful_message();
@@ -607,7 +609,7 @@ mod test {
 
     #[tokio::test]
     async fn post_execute_calls_middleware() {
-        let mut middleware = MockIronworkerMiddleware::new();
+        let mut middleware = MockTestMiddleware::new();
         middleware.expect_after_perform().times(1).return_const(());
 
         let mut message = enqueued_successful_message();

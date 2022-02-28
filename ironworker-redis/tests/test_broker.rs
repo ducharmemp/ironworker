@@ -1,5 +1,5 @@
 use chrono::{Duration, Utc};
-use ironworker_core::{Broker, SerializableMessage};
+use ironworker_core::{broker::Broker, message::SerializableMessage};
 use ironworker_redis::RedisBroker;
 use redis::{AsyncCommands, Client};
 use serde_json::Value;

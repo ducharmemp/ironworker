@@ -1,4 +1,4 @@
-use ironworker_core::SerializableMessage;
+use ironworker_core::message::SerializableMessage;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 

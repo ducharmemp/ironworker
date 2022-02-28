@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use aws_sdk_sqs::{Client, Endpoint};
 use chrono::Utc;
-use ironworker_core::{Broker, SerializableMessage};
+use ironworker_core::{broker::Broker, message::SerializableMessage};
 use ironworker_sqs::SqsBroker;
 use serde_json::Value;
 use uuid::Uuid;

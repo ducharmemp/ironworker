@@ -1,10 +1,9 @@
 use std::{convert::Infallible, ops::Deref};
 
 use async_trait::async_trait;
-
-use crate::{FromPayload, SerializableMessage};
-
-use super::IronworkerMiddleware;
+use ironworker_core::{
+    from_payload::FromPayload, message::SerializableMessage, middleware::IronworkerMiddleware,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct AddMessageStateMiddleware<T> {

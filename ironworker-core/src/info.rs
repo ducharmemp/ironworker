@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use crate::{Broker, IronworkerApplication, SerializableMessage};
+use crate::{broker::Broker, message::SerializableMessage};
 
 /// A struct describing a Worker, including the queue it's listening on, the name of the worker (auto-generated),
 /// and the last time there was a heartbeat.
@@ -61,23 +61,4 @@ pub trait BrokerInfo: Broker {
     async fn stats(&self) -> Stats;
     async fn deadlettered(&self) -> Vec<SerializableMessage>;
     async fn scheduled(&self) -> Vec<SerializableMessage>;
-}
-
-#[async_trait]
-impl<B: BrokerInfo> ApplicationInfo for IronworkerApplication<B> {
-    async fn workers(&self) -> Vec<WorkerInfo> {
-        self.shared_data.broker.workers().await
-    }
-    async fn queues(&self) -> Vec<QueueInfo> {
-        self.shared_data.broker.queues().await
-    }
-    async fn stats(&self) -> Stats {
-        self.shared_data.broker.stats().await
-    }
-    async fn deadlettered(&self) -> Vec<SerializableMessage> {
-        self.shared_data.broker.deadlettered().await
-    }
-    async fn scheduled(&self) -> Vec<SerializableMessage> {
-        self.shared_data.broker.scheduled().await
-    }
 }

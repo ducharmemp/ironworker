@@ -5,15 +5,15 @@ use std::time::Duration;
 use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::{criterion_group, criterion_main};
-use ironworker_core::Task;
 use redis::Client;
 use redis::Commands;
 use snafu::prelude::*;
 use testcontainers::{clients, images, Docker};
 
-use ironworker_core::IntoTask;
-use ironworker_core::IronworkerApplicationBuilder;
-use ironworker_core::Message;
+use ironworker::application::IronworkerApplicationBuilder;
+use ironworker_core::message::Message;
+use ironworker_core::task::IntoTask;
+use ironworker_core::task::Task;
 use ironworker_redis::RedisBroker;
 
 #[derive(Snafu, Debug)]

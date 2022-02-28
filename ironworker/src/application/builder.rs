@@ -1,16 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use ironworker_core::broker::Broker;
+use ironworker_core::message::Message;
+use ironworker_core::middleware::IronworkerMiddleware;
+use ironworker_core::task::{Config, PerformableTask, Task};
 use serde::Serialize;
 use tokio::sync::Notify;
 use uuid::Uuid;
 
-use crate::config::IronworkerConfig;
-use crate::task::{Config, PerformableTask};
-use crate::{Broker, IronworkerApplication};
-use crate::{IronworkerMiddleware, Message, Task};
+use crate::application::config::IronworkerConfig;
 
 use super::shared::SharedData;
+use super::IronworkerApplication;
 
 #[allow(missing_debug_implementations)]
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
@@ -86,7 +88,10 @@ impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
 mod test {
     use std::iter::FromIterator;
 
-    use crate::{broker::InProcessBroker, test::TestEnum, IntoTask, Message};
+    use ironworker_core::message::Message;
+    use ironworker_core::task::IntoTask;
+
+    use crate::{process::InProcessBroker, test::TestEnum};
 
     use super::*;
 
