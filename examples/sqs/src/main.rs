@@ -2,7 +2,11 @@
 use async_trait::async_trait;
 use aws_sdk_sqs::{Client, Endpoint};
 use ironworker::{
-    sqs::SqsBroker, IntoTask, IronworkerApplicationBuilder, IronworkerMiddleware, Message, Task,
+    application::IronworkerApplicationBuilder,
+    message::Message,
+    middleware::IronworkerMiddleware,
+    sqs::SqsBroker,
+    task::{IntoTask, Task},
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;

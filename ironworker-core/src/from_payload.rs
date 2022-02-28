@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{task::TaskError, SerializableMessage};
+use crate::{message::SerializableMessage, task::TaskError};
 
 /// A trait describing something that can be constructed from a given payload.
 #[async_trait]

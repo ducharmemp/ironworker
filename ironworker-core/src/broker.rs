@@ -1,14 +1,11 @@
-mod process;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 #[cfg(test)]
-use mockall::predicate::*;
+use mockall::automock;
 #[cfg(test)]
-use mockall::*;
+use mockall::predicate::*;
 
 use crate::message::SerializableMessage;
-pub use process::InProcessBroker;
 
 /// The communication strategy to fetch and store jobs.
 ///

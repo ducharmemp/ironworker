@@ -4,9 +4,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use futures::future;
+use ironworker_core::broker::Broker;
 use ironworker_core::info::{BrokerInfo, QueueInfo, Stats, WorkerInfo};
-use ironworker_core::Broker;
-use ironworker_core::SerializableMessage;
+use ironworker_core::message::SerializableMessage;
 use redis::aio::ConnectionManager;
 use redis::{AsyncCommands, Client, RedisError, RedisResult, Script};
 

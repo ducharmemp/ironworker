@@ -4,13 +4,11 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 
+use super::base::{SendSyncStatic, TaskPayload};
+use super::{Config, FunctionTask, IntoTask, Task, TaskError};
+
 use crate::from_payload::FromPayload;
 use crate::message::{Message, SerializableMessage};
-use crate::{IntoTask, Task};
-
-use super::base::{SendSyncStatic, TaskError, TaskPayload};
-use super::config::Config;
-use super::FunctionTask;
 
 #[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
@@ -112,74 +110,28 @@ impl_async_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13
 
 #[cfg(test)]
 mod test {
-    use std::sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    };
+    use std::convert::Infallible;
 
-    use anymap::Map;
-    use serde_json::to_value;
-    use uuid::Uuid;
-
-    use crate::{
-        broker::InProcessBroker, message::SerializableMessageBuilder, middleware::extract::Extract,
-        test::TestEnum, IronworkerApplicationBuilder,
-    };
+    use crate::enqueuer::MockEnqueuer;
 
     use super::*;
 
     #[tokio::test]
-    async fn perform_runs_the_task() {
-        let counter = Arc::new(AtomicU64::new(0));
-
-        async fn incr_counter(
-            Message(count): Message<u64>,
-            Extract(counter): Extract<Arc<AtomicU64>>,
-        ) -> Result<(), TestEnum> {
-            counter.fetch_add(count, Ordering::SeqCst);
-            Ok(())
-        }
-
-        let mut state = Map::new();
-        state.insert(counter.clone());
-
-        let message = SerializableMessageBuilder::default()
-            .queue("default".to_string())
-            .created_at(Utc::now())
-            .enqueued_at(Some(Utc::now()))
-            .job_id(Uuid::new_v4())
-            .retries(0)
-            .task(incr_counter.task().name().to_string())
-            .payload(to_value(123).unwrap())
-            .message_state(state)
-            .build()
-            .unwrap();
-
-        let res = incr_counter.task().perform(message).await;
-        assert_eq!(res.unwrap(), ());
-        assert_eq!(counter.load(Ordering::SeqCst), 123);
-    }
-
-    #[tokio::test]
     async fn perform_later_enqueues_the_task() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
-        let app = IronworkerApplicationBuilder::default()
-            .broker(InProcessBroker::default())
-            .register_task(some_task.task())
-            .build();
-        some_task.task().perform_later(&app, 123).await.unwrap();
-        assert_eq!(
-            app.shared_data.broker.queues.lock().await["default"].len(),
-            1
-        );
+        let mut mock = MockEnqueuer::new();
+        mock.expect_enqueue::<u32>()
+            .times(1)
+            .return_once(|_, _, _| Ok(()));
+        some_task.task().perform_later(&mock, 123).await.unwrap();
     }
 
     #[tokio::test]
     async fn name_gives_the_name_of_the_task() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
@@ -188,7 +140,7 @@ mod test {
 
     #[tokio::test]
     async fn queue_as_sets_the_queue() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
@@ -205,7 +157,7 @@ mod test {
 
     #[tokio::test]
     async fn retries_sets_up_the_base_retries() {
-        async fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        async fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 

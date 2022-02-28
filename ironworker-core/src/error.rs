@@ -5,7 +5,7 @@ use tokio::time::error::Elapsed;
 use crate::{message::SerializableMessageBuilderError, task::TaskError};
 
 #[derive(Snafu, Debug)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 pub enum IronworkerError {
     #[snafu(display("Could not enqueue a task"))]
     CouldNotEnqueue,

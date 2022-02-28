@@ -2,22 +2,22 @@ use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
-    pub(crate) queue: Option<&'static str>,
-    pub(crate) retries: Option<u64>,
-    pub(crate) timeout: Option<u64>,
-    pub(crate) at: Option<DateTime<Utc>>,
+    pub queue: Option<&'static str>,
+    pub retries: Option<u64>,
+    pub timeout: Option<u64>,
+    pub at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct UnwrappedConfig {
-    pub(crate) queue: &'static str,
-    pub(crate) retries: u64,
-    pub(crate) timeout: u64,
-    pub(crate) at: Option<DateTime<Utc>>,
+    pub queue: &'static str,
+    pub retries: u64,
+    pub timeout: u64,
+    pub at: Option<DateTime<Utc>>,
 }
 
 impl Config {
-    pub(crate) fn merge(&self, other: Config) -> Config {
+    pub fn merge(&self, other: Config) -> Config {
         Config {
             queue: self.queue.or(other.queue),
             retries: self.retries.or(other.retries),
@@ -26,7 +26,7 @@ impl Config {
         }
     }
 
-    pub(crate) fn unwrap(self) -> UnwrappedConfig {
+    pub fn unwrap(self) -> UnwrappedConfig {
         UnwrappedConfig {
             queue: self.queue.unwrap_or("default"),
             retries: self.retries.unwrap_or(0),

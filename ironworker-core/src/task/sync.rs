@@ -5,11 +5,9 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::from_payload::FromPayload;
 use crate::message::{Message, SerializableMessage};
-use crate::{IntoTask, Task};
 
-use super::base::{SendSyncStatic, TaskError, TaskPayload};
-use super::config::Config;
-use super::FunctionTask;
+use super::base::TaskPayload;
+use super::{Config, FunctionTask, IntoTask, Task, TaskError};
 
 #[allow(missing_debug_implementations)]
 #[derive(Clone, Copy)]
@@ -25,8 +23,8 @@ macro_rules! impl_task_function {
         where
             Err: TaskError,
             T: TaskPayload,
-            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
-            $($param: SendSyncStatic + FromPayload),*
+            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + Send + Sync + 'static + Clone,
+            $($param: Send + Sync + 'static + FromPayload),*
         {
             type Task = FunctionTask<(FunctionMarker, T, Err, $($param),*), F>;
             fn task(self) -> Self::Task {
@@ -44,8 +42,8 @@ macro_rules! impl_task_function {
         where
             Err: TaskError,
             T: TaskPayload,
-            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + SendSyncStatic + Clone,
-            $($param: SendSyncStatic + FromPayload),*
+            F: FnOnce(Message<T>, $($param),*) -> Result<(), Err> + Send + Sync + 'static + Clone,
+            $($param: Send + Sync + 'static + FromPayload),*
         {
             fn name(&self) -> &'static str {
                 fn type_name_of<T>(_: T) -> &'static str {
@@ -109,13 +107,14 @@ impl_task_function!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14,
 
 #[cfg(test)]
 mod test {
+    use std::convert::Infallible;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
     use serde_json::to_value;
 
+    use crate::enqueuer::MockEnqueuer;
     use crate::message::SerializableMessageBuilder;
-    use crate::{broker::InProcessBroker, test::TestEnum, IronworkerApplicationBuilder};
 
     use super::*;
 
@@ -124,7 +123,7 @@ mod test {
         let status_mock_called = Arc::new(AtomicBool::new(false));
         let inner = status_mock_called.clone();
 
-        let status_mock = Box::new(move |_state: Message<u32>| -> Result<(), TestEnum> {
+        let status_mock = Box::new(move |_state: Message<u32>| -> Result<(), Infallible> {
             inner.store(true, std::sync::atomic::Ordering::Relaxed);
             Ok(())
         });
@@ -142,24 +141,20 @@ mod test {
 
     #[tokio::test]
     async fn perform_later_enqueues_the_task() {
-        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
-        let app = IronworkerApplicationBuilder::default()
-            .broker(InProcessBroker::default())
-            .register_task(some_task.task())
-            .build();
-        some_task.task().perform_later(&app, 123).await.unwrap();
-        assert_eq!(
-            app.shared_data.broker.queues.lock().await["default"].len(),
-            1
-        );
+        let mut mock = MockEnqueuer::new();
+        mock.expect_enqueue::<u32>()
+            .times(1)
+            .return_once(|_, _, _| Ok(()));
+        some_task.task().perform_later(&mock, 123).await.unwrap();
     }
 
     #[tokio::test]
     async fn name_gives_the_name_of_the_task() {
-        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
@@ -168,7 +163,7 @@ mod test {
 
     #[tokio::test]
     async fn queue_as_sets_the_queue() {
-        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 
@@ -185,7 +180,7 @@ mod test {
 
     #[tokio::test]
     async fn retries_sets_up_the_base_retries() {
-        fn some_task(_payload: Message<u32>) -> Result<(), TestEnum> {
+        fn some_task(_payload: Message<u32>) -> Result<(), Infallible> {
             Ok(())
         }
 

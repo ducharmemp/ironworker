@@ -7,11 +7,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use snafu::{AsErrorSource, ResultExt};
 
+use crate::enqueuer::Enqueuer;
 use crate::error::{
-    CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu, PerformNowSnafu,
+    CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu, IronworkerError,
+    PerformNowSnafu,
 };
-use crate::message::{Message, SerializableMessageBuilder};
-use crate::{Enqueuer, IronworkerError, SerializableMessage};
+use crate::message::{Message, SerializableMessage, SerializableMessageBuilder};
 
 use super::config::Config;
 use super::IntoPerformableTask;

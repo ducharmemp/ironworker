@@ -1,17 +1,15 @@
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use futures::StreamExt;
-
 use futures::stream::FuturesUnordered;
+use futures::StreamExt;
+use ironworker_core::broker::Broker;
 use tokio::select;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
-
 use tracing::info;
 
 use super::WorkerStateMachine;
 use crate::application::shared::SharedData;
-use crate::Broker;
 
 pub(crate) struct IronWorkerPool<B: Broker> {
     id: String,

@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{
-    task::{Config, PerformableTask},
-    Broker, IronworkerMiddleware,
-};
+use ironworker_core::task::PerformableTask;
+use ironworker_core::{broker::Broker, middleware::IronworkerMiddleware, task::Config};
 
 pub(crate) struct SharedData<B: Broker> {
     pub(crate) broker: B,

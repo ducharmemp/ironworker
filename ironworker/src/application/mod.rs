@@ -1,4 +1,5 @@
 mod builder;
+mod config;
 mod shared;
 mod worker;
 
@@ -9,7 +10,6 @@ use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use serde::Serialize;
-
 use serde_json::to_value;
 use snafu::ResultExt;
 use tokio::select;
@@ -17,12 +17,18 @@ use tokio::sync::broadcast::channel;
 use tokio::sync::Notify;
 use tracing::debug;
 
-use crate::config::IronworkerConfig;
-use crate::error::{CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu};
-use crate::message::SerializableMessageBuilder;
-use crate::task::Config as TaskConfig;
-use crate::{Broker, Enqueuer, IronworkerError, Message};
+use ironworker_core::broker::Broker;
+use ironworker_core::enqueuer::Enqueuer;
+use ironworker_core::error::IronworkerError;
+use ironworker_core::error::{
+    CouldNotConstructSerializableMessageSnafu, CouldNotSerializePayloadSnafu,
+};
+use ironworker_core::info::{ApplicationInfo, BrokerInfo, QueueInfo, Stats, WorkerInfo};
+use ironworker_core::message::SerializableMessageBuilder;
+use ironworker_core::message::{Message, SerializableMessage};
+use ironworker_core::task::Config as TaskConfig;
 
+use self::config::IronworkerConfig;
 pub use builder::IronworkerApplicationBuilder;
 pub(crate) use shared::SharedData;
 use worker::IronWorkerPool;
@@ -126,21 +132,40 @@ impl<B: Broker> Enqueuer for IronworkerApplication<B> {
     }
 }
 
+#[async_trait]
+impl<B: BrokerInfo> ApplicationInfo for IronworkerApplication<B> {
+    async fn workers(&self) -> Vec<WorkerInfo> {
+        self.shared_data.broker.workers().await
+    }
+    async fn queues(&self) -> Vec<QueueInfo> {
+        self.shared_data.broker.queues().await
+    }
+    async fn stats(&self) -> Stats {
+        self.shared_data.broker.stats().await
+    }
+    async fn deadlettered(&self) -> Vec<SerializableMessage> {
+        self.shared_data.broker.deadlettered().await
+    }
+    async fn scheduled(&self) -> Vec<SerializableMessage> {
+        self.shared_data.broker.scheduled().await
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{collections::HashMap, iter::FromIterator};
 
-    use super::*;
-    use crate::{
-        broker::MockBroker,
-        middleware::MockIronworkerMiddleware,
-        test::{assert_send, assert_sync, boxed_task, successful},
-        IntoTask, Task,
+    use ironworker_core::task::{IntoTask, Task};
+
+    use crate::test::{
+        assert_send, assert_sync, boxed_task, successful, MockTestBroker, MockTestMiddleware,
     };
+
+    use super::*;
 
     #[tokio::test]
     async fn enqueuing_message_goes_to_broker() {
-        let mut broker = MockBroker::new();
+        let mut broker = MockTestBroker::new();
         broker.expect_enqueue().times(1).return_const(Ok(()));
         let task = successful.task();
 
@@ -164,11 +189,11 @@ mod test {
 
     #[tokio::test]
     async fn enqueueing_message_calls_before_enqueue() {
-        let mut broker = MockBroker::new();
+        let mut broker = MockTestBroker::new();
         broker.expect_enqueue().times(1).return_const(Ok(()));
         let task = successful.task();
 
-        let mut middleware = MockIronworkerMiddleware::new();
+        let mut middleware = MockTestMiddleware::new();
         middleware.expect_before_enqueue().times(1).return_const(());
 
         let app = IronworkerApplication {
@@ -191,7 +216,7 @@ mod test {
 
     #[test]
     fn assertions() {
-        assert_send::<IronworkerApplication<MockBroker>>();
-        assert_sync::<IronworkerApplication<MockBroker>>();
+        assert_send::<IronworkerApplication<MockTestBroker>>();
+        assert_sync::<IronworkerApplication<MockTestBroker>>();
     }
 }
