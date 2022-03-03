@@ -1,12 +1,5 @@
-use std::sync::Arc;
-
-use askama_axum::Template;
-use axum::{
-    extract::{Extension, Form},
-    http::StatusCode,
-    routing::get,
-    AddExtensionLayer, Router,
-};
+use actix_web::{web, HttpResponse, Scope};
+use askama_actix::Template;
 use ironworker_core::{
     broker::Broker,
     enqueuer::Enqueuer,
@@ -47,7 +40,7 @@ struct JobRetry {
 }
 
 async fn overview_get<B: Broker + BrokerInfo>(
-    Extension(ironworker): Extension<Arc<IronworkerApplication<B>>>,
+    ironworker: web::Data<IronworkerApplication<B>>,
 ) -> OverviewTemplate {
     let workers = ironworker.workers().await;
     let queues = ironworker.queues().await;
@@ -56,7 +49,7 @@ async fn overview_get<B: Broker + BrokerInfo>(
 }
 
 async fn stats_get<B: Broker + BrokerInfo>(
-    Extension(ironworker): Extension<Arc<IronworkerApplication<B>>>,
+    ironworker: web::Data<IronworkerApplication<B>>,
 ) -> StatsTemplate {
     let stats = ironworker.stats().await;
     StatsTemplate {
@@ -68,7 +61,7 @@ async fn stats_get<B: Broker + BrokerInfo>(
 }
 
 async fn failed_get<B: Broker + BrokerInfo>(
-    Extension(ironworker): Extension<Arc<IronworkerApplication<B>>>,
+    ironworker: web::Data<IronworkerApplication<B>>,
 ) -> FailedTemplate {
     let deadlettered = ironworker.deadlettered().await;
 
@@ -76,25 +69,26 @@ async fn failed_get<B: Broker + BrokerInfo>(
 }
 
 async fn failed_post<B: Broker + BrokerInfo>(
-    Form(job_retry): Form<JobRetry>,
-    Extension(ironworker): Extension<Arc<IronworkerApplication<B>>>,
-) -> Result<(), StatusCode> {
+    web::Form(job_retry): web::Form<JobRetry>,
+    ironworker: web::Data<IronworkerApplication<B>>,
+) -> HttpResponse {
     let retry_result = ironworker
         .enqueue(&job_retry.task, job_retry.payload, Default::default())
         .await;
     if retry_result.is_err() {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        return HttpResponse::UnprocessableEntity().finish();
     }
-    Ok(())
+    HttpResponse::Ok().finish()
 }
 
-pub fn endpoints<B: Broker + BrokerInfo>(ironworker: IronworkerApplication<B>) -> Router {
-    Router::new()
-        .route("/ironworker/", get(overview_get::<B>))
-        .route(
-            "/ironworker/failed",
-            get(failed_get::<B>).post(failed_post::<B>),
+pub fn endpoints<B: Broker + BrokerInfo>(ironworker: IronworkerApplication<B>) -> Scope {
+    web::scope("ironworker")
+        .service(web::resource("/").route(web::get().to(overview_get::<B>)))
+        .service(
+            web::resource("failed")
+                .route(web::get().to(failed_get::<B>))
+                .route(web::post().to(failed_post::<B>)),
         )
-        .route("/ironworker/stats", get(stats_get::<B>))
-        .layer(AddExtensionLayer::new(ironworker))
+        .service(web::resource("stats").route(web::get().to(stats_get::<B>)))
+        .app_data(web::Data::new(ironworker))
 }

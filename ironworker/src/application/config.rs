@@ -2,12 +2,12 @@ use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct QueueConfig {
     pub(crate) concurrency: usize,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
 pub(crate) struct IronworkerConfig {
     pub(crate) concurrency: usize,

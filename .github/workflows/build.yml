@@ -5,7 +5,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUSTFLAGS: -Dwarnings
+  # RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
   # These are for the AWS SDK to be able to connect to ElasticMQ locally
   AWS_DEFAULT_REGION: local

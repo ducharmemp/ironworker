@@ -62,6 +62,10 @@ pub mod sqs {
 pub mod axum {
     pub use crate::extras::axum_integration::*;
 }
+#[cfg(feature = "actix-integration")]
+pub mod actix {
+    pub use crate::extras::actix_integration::*;
+}
 
 pub mod application;
 pub mod enqueue;

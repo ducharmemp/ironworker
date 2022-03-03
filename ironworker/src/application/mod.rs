@@ -33,14 +33,15 @@ pub use builder::IronworkerApplicationBuilder;
 pub(crate) use shared::SharedData;
 use worker::IronWorkerPool;
 
-#[allow(missing_debug_implementations)]
 /// The main handle that coordinates workers, tasks, and configuration in order to drive a set of async queues.
+#[derive(Debug)]
 pub struct IronworkerApplication<B: Broker> {
-    pub(crate) id: String,
-    pub(crate) queues: HashSet<&'static str>,
-    pub(crate) config: IronworkerConfig,
-    pub(crate) notify_shutdown: Notify,
-    pub(crate) shared_data: Arc<SharedData<B>>,
+    id: String,
+    name: String,
+    queues: HashSet<&'static str>,
+    config: IronworkerConfig,
+    notify_shutdown: Notify,
+    shared_data: Arc<SharedData<B>>,
 }
 
 impl<B: Broker + Send + 'static> IronworkerApplication<B> {
@@ -151,6 +152,19 @@ impl<B: BrokerInfo> ApplicationInfo for IronworkerApplication<B> {
     }
 }
 
+impl<B: Broker> Clone for IronworkerApplication<B> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            queues: self.queues.clone(),
+            config: self.config.clone(),
+            notify_shutdown: Notify::new(),
+            shared_data: self.shared_data.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{collections::HashMap, iter::FromIterator};
@@ -171,6 +185,7 @@ mod test {
 
         let app = IronworkerApplication {
             id: "test".to_string(),
+            name: "test-name".to_string(),
             queues: HashSet::from_iter(["default"]),
             config: IronworkerConfig::default(),
             notify_shutdown: Notify::new(),
@@ -198,6 +213,7 @@ mod test {
 
         let app = IronworkerApplication {
             id: "test".to_string(),
+            name: "test-name".to_string(),
             queues: HashSet::from_iter(["default"]),
             config: IronworkerConfig::default(),
             notify_shutdown: Notify::new(),

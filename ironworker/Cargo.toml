@@ -20,24 +20,29 @@ default = []
 redis = ["ironworker-redis"]
 sqs = ["ironworker-sqs"]
 axum-integration = ["askama_axum", "askama", "axum"]
+actix-integration = ["askama_actix", "askama", "actix-web"]
 
 [dependencies]
-askama_axum = { version = "0.1", optional = true }
+actix-web = { version = "4.0", optional = true }
 askama = { version = "0.11", optional = true }
-axum = { version = "0.4", optional = true }
+askama_actix = { version = "0.13", optional = true }
+askama_axum = { version = "0.1", optional = true }
 async-trait = "0.1"
+axum = { version = "0.4", optional = true }
 chrono = { version = "0.4", features = [ "serde" ] }
 config = "0.11"
 futures = "0.3"
+rand = "0.8"
+ironworker-core = { path = "../ironworker-core" }
+ironworker-redis = { path = "../ironworker-redis", optional = true }
+ironworker-sqs = { path = "../ironworker-sqs", optional = true }
+petname = "1.1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 snafu = { version = "0.7", features = ["futures"]}
 tokio = { version = "1.17", features = ["test-util", "macros"] }
 tracing = "0.1"
 uuid = { version = "0.8", features = ["v4", "serde"] }
-ironworker-core = { path = "../ironworker-core" }
-ironworker-redis = { path = "../ironworker-redis", optional = true }
-ironworker-sqs = { path = "../ironworker-sqs", optional = true }
 
 [dev-dependencies]
 mockall = "0.11.0"
