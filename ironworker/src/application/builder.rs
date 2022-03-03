@@ -17,6 +17,7 @@ use super::IronworkerApplication;
 #[allow(missing_debug_implementations)]
 pub struct IronworkerApplicationBuilder<B: Broker + 'static> {
     id: String,
+    name: String,
     broker: Option<B>,
     tasks: HashMap<&'static str, (Box<dyn PerformableTask>, Config)>,
     middleware: Vec<Box<dyn IronworkerMiddleware>>,
@@ -60,6 +61,7 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
         #[allow(clippy::expect_used)]
         IronworkerApplication {
             id: self.id,
+            name: self.name,
             config: IronworkerConfig::new().expect("Could not construct Ironworker configuration"),
             notify_shutdown: Notify::new(),
             queues: self.queues,
@@ -74,8 +76,11 @@ impl<B: Broker + 'static> IronworkerApplicationBuilder<B> {
 
 impl<B: Broker + 'static> Default for IronworkerApplicationBuilder<B> {
     fn default() -> Self {
+        let mut rng = rand::thread_rng();
+        let petname = petname::Petnames::default().generate(&mut rng, 3, "-");
         Self {
             id: Uuid::new_v4().to_string(),
+            name: petname,
             broker: None,
             middleware: Default::default(),
             tasks: HashMap::new(),

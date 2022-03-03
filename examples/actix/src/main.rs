@@ -1,29 +1,9 @@
-//! Provides a RESTful web server managing some Todos.
-//!
-//! API will be:
-//!
-//! - `GET /todos`: return a JSON list of Todos.
-//! - `POST /todos`: create a new Todo.
-//! - `PUT /todos/:id`: update a specific Todo.
-//! - `DELETE /todos/:id`: delete a specific Todo.
-//!
-//! Run with
-//!
-//! ```not_rust
-//! cargo run -p example-todos
-//! ```
-//!
-//! Taken from <https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs> with ironworker mixed in
-
-use async_trait::async_trait;
-use axum::{
-    error_handling::HandleErrorLayer,
-    extract::{Extension, Path, Query},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, patch},
-    Json, Router,
+use actix_web::{
+    middleware::Logger,
+    web::{self, Json},
+    App, HttpResponse, HttpServer,
 };
+use async_trait::async_trait;
 use ironworker::{
     application::{IronworkerApplication, IronworkerApplicationBuilder},
     extract::{AddMessageStateMiddleware, Extract},
@@ -41,10 +21,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, RwLock,
     },
-    time::Duration,
 };
-use tower::{BoxError, ServiceBuilder};
-use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
 use uuid::Uuid;
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -61,9 +38,7 @@ impl IronworkerMiddleware for CounterMiddleware {
 #[tokio::main]
 async fn main() {
     // Set the RUST_LOG, if it hasn't been explicitly defined
-    if std::env::var_os("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "example_todos=debug,tower_http=debug")
-    }
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     // tracing_subscriber::fmt::init();
 
     let db = Db::default();
@@ -74,42 +49,38 @@ async fn main() {
         .register_middleware(AddMessageStateMiddleware::new(db.clone()))
         .build();
 
-    // Compose the routes
-    let app = Router::new()
-        .merge(ironworker::axum::endpoints(ironworker.clone()))
-        .route("/todos", get(todos_index).post(todos_create))
-        .route("/todos/:id", patch(todos_update).delete(todos_delete))
-        .route("/count", get(log_count))
-        // Add middleware to all routes
-        .layer(
-            ServiceBuilder::new()
-                .layer(HandleErrorLayer::new(|error: BoxError| async move {
-                    if error.is::<tower::timeout::error::Elapsed>() {
-                        Ok(StatusCode::REQUEST_TIMEOUT)
-                    } else {
-                        Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Unhandled internal error: {}", error),
-                        ))
-                    }
-                }))
-                .timeout(Duration::from_secs(10))
-                .layer(TraceLayer::new_for_http())
-                .layer(AddExtensionLayer::new(db.clone()))
-                .layer(AddExtensionLayer::new(ironworker.clone()))
-                .into_inner(),
-        );
-
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::debug!("listening on {}", addr);
+
+    let worker = ironworker.clone();
     tokio::spawn(async move {
-        ironworker.run().await;
+        worker.run().await;
     });
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .service(ironworker::actix::endpoints(ironworker.clone()))
+            .service(
+                web::resource("/todos")
+                    .route(web::get().to(todos_index))
+                    .route(web::post().to(todos_create)),
+            )
+            .service(
+                web::resource("/todos/{id}")
+                    .route(web::patch().to(todos_update))
+                    .route(web::delete().to(todos_delete)),
+            )
+            .service(web::resource("/count").route(web::get().to(log_count)))
+            .app_data(web::Data::new(db.clone()))
+            .app_data(ironworker.clone())
+    })
+    .bind(addr)
+    .unwrap()
+    .workers(2)
+    .run()
+    .await
+    .unwrap();
 }
 
 // The query parameters for todos index
@@ -120,12 +91,16 @@ pub struct Pagination {
 }
 
 async fn todos_index(
-    pagination: Option<Query<Pagination>>,
-    Extension(db): Extension<Db>,
-) -> impl IntoResponse {
+    pagination: Option<web::Query<Pagination>>,
+    db: web::Data<Db>,
+) -> Json<Vec<Todo>> {
     let todos = db.read().unwrap();
 
-    let Query(pagination) = pagination.unwrap_or_default();
+    let pagination: Pagination = if let Some(pagination) = pagination {
+        pagination.into_inner()
+    } else {
+        Default::default()
+    };
 
     let todos = todos
         .values()
@@ -144,9 +119,10 @@ struct CreateTodo {
 
 async fn todos_create(
     Json(input): Json<CreateTodo>,
-    Extension(db): Extension<Db>,
-    Extension(ironworker): Extension<IronworkerApplication<RedisBroker>>,
-) -> impl IntoResponse {
+    db: web::Data<Db>,
+    ironworker: web::Data<IronworkerApplication<RedisBroker>>,
+) -> HttpResponse {
+    let ironworker = ironworker.into_inner();
     let todo = Todo {
         id: Uuid::new_v4(),
         text: input.text,
@@ -157,11 +133,11 @@ async fn todos_create(
     log_todos
         .task()
         .wait(chrono::Duration::seconds(30))
-        .perform_later(&ironworker, todo.id)
+        .perform_later(&*ironworker, todo.id)
         .await
         .unwrap();
 
-    (StatusCode::CREATED, Json(todo))
+    HttpResponse::Created().json(todo)
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,16 +147,18 @@ struct UpdateTodo {
 }
 
 async fn todos_update(
-    Path(id): Path<Uuid>,
+    path: web::Path<Uuid>,
     Json(input): Json<UpdateTodo>,
-    Extension(db): Extension<Db>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let mut todo = db
-        .read()
-        .unwrap()
-        .get(&id)
-        .cloned()
-        .ok_or(StatusCode::NOT_FOUND)?;
+    db: web::Data<Db>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    let todo = db.read().unwrap().get(&id).cloned();
+
+    if todo.is_none() {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let mut todo = todo.unwrap();
 
     if let Some(text) = input.text {
         todo.text = text;
@@ -192,14 +170,15 @@ async fn todos_update(
 
     db.write().unwrap().insert(todo.id, todo.clone());
 
-    Ok(Json(todo))
+    HttpResponse::Ok().json(todo)
 }
 
-async fn todos_delete(Path(id): Path<Uuid>, Extension(db): Extension<Db>) -> impl IntoResponse {
+async fn todos_delete(path: web::Path<Uuid>, db: web::Data<Db>) -> HttpResponse {
+    let id = path.into_inner();
     if db.write().unwrap().remove(&id).is_some() {
-        StatusCode::NO_CONTENT
+        HttpResponse::NoContent().finish()
     } else {
-        StatusCode::NOT_FOUND
+        HttpResponse::NotFound().finish()
     }
 }
 
